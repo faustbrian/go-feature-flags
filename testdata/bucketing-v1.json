@@ -1,0 +1,74 @@
+{
+  "algorithm": "sha256-first-uint64-modulo",
+  "byteOrder": "big-endian",
+  "encoding": "utf-8",
+  "fieldLength": "uint32-big-endian-bytes",
+  "precision": 100000,
+  "prefix": "go-feature-flags/bucket/v1",
+  "version": 1,
+  "vectors": [
+    {
+      "name": "empty",
+      "seed": "",
+      "featureKey": "",
+      "tenant": "",
+      "subject": "",
+      "sha256": "fc04ec2f9eade032a70a44a156e4bde2bb6bd187c778a1afd5e5d12d7b22c85f",
+      "bucket": 95794
+    },
+    {
+      "name": "default-seed",
+      "seed": "",
+      "featureKey": "checkout.redesign",
+      "tenant": "tenant-a",
+      "subject": "user-123",
+      "sha256": "83cd9319f365e6dfd72b312684469e8ec1738c0b123615427e1cb7bf4088ddfd",
+      "bucket": 51295
+    },
+    {
+      "name": "explicit-seed",
+      "seed": "experiment-7",
+      "featureKey": "search.rank",
+      "tenant": "tenant-a",
+      "subject": "user-123",
+      "sha256": "d820a29cdf32e2437596119bcd4c9df0bfe53e0978ee248f3ed9a296f544d63b",
+      "bucket": 26947
+    },
+    {
+      "name": "tenant-isolation",
+      "seed": "experiment-7",
+      "featureKey": "search.rank",
+      "tenant": "tenant-b",
+      "subject": "user-123",
+      "sha256": "e793205e76781e0af2a35e70eb803cfbb381401489121e2639f1f24fd021c191",
+      "bucket": 17802
+    },
+    {
+      "name": "unicode-utf8",
+      "seed": "v1",
+      "featureKey": "café.🚀",
+      "tenant": "tenant-å",
+      "subject": "用户-42",
+      "sha256": "e78e60da828226634ee2ca628e2877926f0c82313760370a739cbfde07f15f99",
+      "bucket": 70979
+    },
+    {
+      "name": "length-framing-left",
+      "seed": "a",
+      "featureKey": "bc",
+      "tenant": "d",
+      "subject": "e",
+      "sha256": "66b854e3a9d036689f9a974b9e1d26569162ec98ae26ef674b403170d344a4fd",
+      "bucket": 14472
+    },
+    {
+      "name": "length-framing-right",
+      "seed": "ab",
+      "featureKey": "c",
+      "tenant": "d",
+      "subject": "e",
+      "sha256": "9dd0c3c0b777ecd6e5b93396463508c03877a8bf1b11bb0645ea41a6f941e0bd",
+      "bucket": 29494
+    }
+  ]
+}
