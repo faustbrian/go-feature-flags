@@ -23,4 +23,24 @@ func TestNoGoroutineLeaks(t *testing.T) {
 	if err := cached.Close(context.Background()); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
+
+	now := time.Now().Round(0)
+	loader := &fleetTestLoader{candidates: []SnapshotCandidate{{
+		Snapshot: fleetBooleanSnapshot(t, "tenant-a", "flag", false),
+		Revision: "leak-test", Provenance: "memory", SourceTime: now,
+	}}}
+	sleeper := &fleetTestSleeper{delays: make(chan time.Duration, 1), release: make(chan struct{})}
+	config := validFleetConfig(&fleetTestClock{now: now}, loader)
+	config.Sleeper = sleeper
+	fleet, err := NewFleet(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fleet.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	<-sleeper.delays
+	if err := fleet.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }

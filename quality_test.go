@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func FuzzImportNeverPanics(f *testing.F) {
@@ -89,6 +90,47 @@ func FuzzContextEvaluationNeverPanics(f *testing.F) {
 			Attributes: map[string]string{key: value},
 			Facts:      map[string]Value{key: StructuredValue(fact)},
 		})
+	})
+}
+
+func FuzzFleetInvalidationHistoryIsDeterministicAndBounded(f *testing.F) {
+	f.Add("valkey", "next", uint64(1), uint64(2))
+	f.Add("", "", uint64(0), ^uint64(0))
+
+	f.Fuzz(func(t *testing.T, stream, revision string, firstSequence, secondSequence uint64) {
+		if len(stream) > maxFleetIdentityLength+1 || len(revision) > maxFleetIdentityLength+1 {
+			t.Skip()
+		}
+		now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+		provider := NewMemoryProvider(DefaultLimits())
+		empty, err := provider.Snapshot(context.Background(), "tenant-a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidate := SnapshotCandidate{
+			Snapshot: empty, Revision: "current", Provenance: "memory", SourceTime: now,
+		}
+		loader := SnapshotLoadFunc(func(context.Context, string) (SnapshotCandidate, error) {
+			return candidate, nil
+		})
+		config := validFleetConfig(&fleetTestClock{now: now}, loader)
+		config.AllowEmptyBootstrap = true
+		fleet, err := NewFleet(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fleet.Bootstrap(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		for _, sequence := range []uint64{firstSequence, secondSequence} {
+			_, _ = fleet.Invalidate(context.Background(), Invalidation{
+				Tenant: "tenant-a", Stream: stream, Sequence: sequence,
+				Revision: revision, ObservedAt: now,
+			})
+		}
+		if len(fleet.invalidations) > config.MaxInvalidationStreams || fleet.Status().InvalidationGaps > 2 {
+			t.Fatalf("unbounded invalidation state: streams=%d status=%#v", len(fleet.invalidations), fleet.Status())
+		}
 	})
 }
 
@@ -322,6 +364,60 @@ func BenchmarkSnapshotMaximumContextAndBatch(b *testing.B) {
 		if _, evaluationErr := snapshot.Batch(contextValue, requests); evaluationErr != nil {
 			b.Fatal(evaluationErr)
 		}
+	}
+}
+
+func BenchmarkFleetBooleanFresh(b *testing.B) {
+	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+	loader := &fleetTestLoader{candidates: []SnapshotCandidate{{
+		Snapshot: fleetBooleanSnapshot(b, "tenant-a", "flag", true),
+		Revision: "benchmark", Provenance: "memory", SourceTime: now,
+	}}}
+	fleet, err := NewFleet(validFleetConfig(&fleetTestClock{now: now}, loader))
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := fleet.Bootstrap(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	evaluationContext := Context{Tenant: "tenant-a", Subject: "subject"}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := fleet.Boolean("flag", evaluationContext); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if elapsed := b.Elapsed(); elapsed > 0 {
+		b.ReportMetric(float64(b.N)/elapsed.Seconds(), "evaluations/s")
+	}
+}
+
+func BenchmarkFleetCurrentInvalidation(b *testing.B) {
+	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+	loader := &fleetTestLoader{candidates: []SnapshotCandidate{{
+		Snapshot: fleetBooleanSnapshot(b, "tenant-a", "flag", true),
+		Revision: "benchmark", Provenance: "memory", SourceTime: now,
+	}}}
+	fleet, err := NewFleet(validFleetConfig(&fleetTestClock{now: now}, loader))
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := fleet.Bootstrap(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := range b.N {
+		if _, err := fleet.Invalidate(context.Background(), Invalidation{
+			Tenant: "tenant-a", Stream: "benchmark", Sequence: uint64(index + 1),
+			Revision: "benchmark", ObservedAt: now,
+		}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if elapsed := b.Elapsed(); elapsed > 0 {
+		b.ReportMetric(float64(b.N)/elapsed.Seconds(), "invalidations/s")
 	}
 }
 

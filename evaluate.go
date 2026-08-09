@@ -10,13 +10,16 @@ import (
 type Reason string
 
 const (
-	ReasonTargetingMatch   Reason = "targeting_match"
-	ReasonRollout          Reason = "rollout"
-	ReasonSchedule         Reason = "schedule"
-	ReasonDependencyFailed Reason = "dependency_failed"
-	ReasonGroupMatch       Reason = "group_match"
-	ReasonDefault          Reason = "default"
-	ReasonInactive         Reason = "inactive"
+	ReasonTargetingMatch        Reason = "targeting_match"
+	ReasonRollout               Reason = "rollout"
+	ReasonSchedule              Reason = "schedule"
+	ReasonDependencyFailed      Reason = "dependency_failed"
+	ReasonGroupMatch            Reason = "group_match"
+	ReasonDefault               Reason = "default"
+	ReasonInactive              Reason = "inactive"
+	ReasonDegradedFailOpen      Reason = "degraded_fail_open"
+	ReasonDegradedDefault       Reason = "degraded_default"
+	ReasonDegradedLastKnownGood Reason = "degraded_last_known_good"
 )
 
 // Diagnostic contains safe, bounded evaluation information and never embeds
@@ -369,10 +372,7 @@ func (s Snapshot) evaluateGroup(
 }
 
 func boundDiagnostics(diagnostics []Diagnostic, limits Limits) []Diagnostic {
-	count := len(diagnostics)
-	if count > limits.MaxDiagnostics {
-		count = limits.MaxDiagnostics
-	}
+	count := min(len(diagnostics), limits.MaxDiagnostics)
 	if count <= 0 {
 		return nil
 	}
@@ -388,14 +388,14 @@ func boundDiagnostics(diagnostics []Diagnostic, limits Limits) []Diagnostic {
 }
 
 func truncateUTF8(value string, limit int) string {
-	if limit <= 0 {
+	if limit < 1 {
 		return ""
 	}
-	if len(value) <= limit {
+	end := min(len(value), limit)
+	if end == len(value) {
 		return value
 	}
-	end := limit
-	for end > 0 && !utf8.ValidString(value[:end]) {
+	for end != 0 && !utf8.ValidString(value[:end]) {
 		end--
 	}
 

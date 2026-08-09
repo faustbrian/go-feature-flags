@@ -54,9 +54,13 @@ func (p *MemoryProvider) Cleanup(
 			report.DiscardedStages++
 		}
 	}
-	if options.KeepAudit > 0 && len(p.audit[tenant]) > options.KeepAudit {
-		report.DiscardedAudit = len(p.audit[tenant]) - options.KeepAudit
-		p.audit[tenant] = append([]AuditEntry(nil), p.audit[tenant][report.DiscardedAudit:]...)
+	if options.KeepAudit > 0 {
+		discarded := len(p.audit[tenant]) - options.KeepAudit
+		if discarded < 1 {
+			return report, nil
+		}
+		report.DiscardedAudit = discarded
+		p.audit[tenant] = append([]AuditEntry(nil), p.audit[tenant][discarded:]...)
 	}
 
 	return report, nil

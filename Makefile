@@ -35,6 +35,7 @@ mutation:
 	./scripts/check-mutation.sh
 
 benchmark:
+	$(GO) version
 	$(GO) test . -run '^$$' -bench Benchmark -benchmem \
 		-benchtime="$(BENCH_TIME)"
 

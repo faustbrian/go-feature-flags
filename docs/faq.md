@@ -30,6 +30,18 @@ strategies. An unsupported custom strategy returns `ErrUnsupportedStrategy`.
 No. The application calls `ApplyScheduled` and owns scheduling, cancellation,
 and shutdown.
 
+## Does fleet refresh start automatically?
+
+No. `Fleet.Start` first bootstraps synchronously and then starts exactly one
+bounded refresher. `Fleet.Shutdown` cancels and joins fleet work. Provider and
+cache ownership remains with the application.
+
+## What if an invalidation is lost?
+
+Sequence gaps are observable and trigger refresh. A completely lost event is
+repaired by periodic refresh within the configured convergence window, subject
+to provider availability and the explicitly reported degraded state.
+
 ## How should context privacy be handled?
 
 Prefer opaque IDs and coarse attributes. Do not include secrets or unnecessary

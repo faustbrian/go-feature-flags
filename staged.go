@@ -3,7 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -100,7 +100,7 @@ func (p *MemoryProvider) ApplyScheduled(
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	if len(ids) == 0 {
 		return []Definition{}, nil
 	}
@@ -118,7 +118,7 @@ func (p *MemoryProvider) StagedChanges(ctx context.Context, tenant string) ([]St
 	for id := range p.staged[tenant] {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	changes := make([]StagedChange, 0, len(ids))
 	for _, id := range ids {
 		changes = append(changes, cloneStagedChange(p.staged[tenant][id]))

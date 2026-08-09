@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -275,7 +276,7 @@ func (provider *CachedProvider) evictOldestLocked() {
 	var oldestTime time.Time
 	for tenant, entry := range provider.entries {
 		if oldestTenant == "" || entry.fetched.Before(oldestTime) ||
-			(entry.fetched.Equal(oldestTime) && tenant < oldestTenant) {
+			(entry.fetched.Equal(oldestTime) && strings.Compare(tenant, oldestTenant) == -1) {
 			oldestTenant = tenant
 			oldestTime = entry.fetched
 		}

@@ -4,6 +4,7 @@ package featureflagstest
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,71 @@ import (
 
 // Factory returns an isolated provider for one conformance test.
 type Factory func(*testing.T) featureflags.Provider
+
+type fleetClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (clock *fleetClock) Now() time.Time {
+	clock.mu.Lock()
+	defer clock.mu.Unlock()
+	return clock.now
+}
+
+func (clock *fleetClock) advance(duration time.Duration) {
+	clock.mu.Lock()
+	clock.now = clock.now.Add(duration)
+	clock.mu.Unlock()
+}
+
+// RunFleet proves fleet bootstrap and refresh through a real Provider contract.
+func RunFleet(t *testing.T, factory Factory) {
+	t.Helper()
+	t.Run("fleet bootstrap and refresh", func(t *testing.T) {
+		provider := factory(t)
+		t.Cleanup(func() { _ = provider.Close(context.Background()) })
+		created, err := provider.Create(t.Context(), "tenant-a", definition("fleet-flag", false), "tester")
+		if err != nil {
+			t.Fatal(err)
+		}
+		clock := &fleetClock{now: time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)}
+		loader, err := featureflags.NewProviderSnapshotLoader(provider, clock, "provider-conformance")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fleet, err := featureflags.NewFleet(featureflags.FleetConfig{
+			Tenant: "tenant-a", ReplicaID: "conformance-pod", Loader: loader, Clock: clock,
+			RefreshInterval: time.Minute, MinRefreshInterval: time.Second,
+			MaxRefreshJitter: 10 * time.Second, LoadTimeout: 5 * time.Second,
+			FreshFor: 2 * time.Minute, MaxStaleness: 10 * time.Minute,
+			ConvergenceWindow: 2 * time.Minute, MaxWaiters: 4, MaxProviderLoads: 3,
+			MaxConcurrentProviderLoads: 1, MaxInvalidationStreams: 2, MaxPolicies: 8,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fleet.Bootstrap(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := provider.Update(
+			t.Context(), "tenant-a", definition("fleet-flag", true), created.Version, "tester",
+		); err != nil {
+			t.Fatal(err)
+		}
+		clock.advance(2 * time.Second)
+		if _, err := fleet.Refresh(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		detail, err := fleet.Boolean("fleet-flag", featureflags.Context{Tenant: "tenant-a"})
+		if err != nil || !detail.Value {
+			t.Fatalf("fleet evaluation = %#v, %v", detail, err)
+		}
+		if err := fleet.Shutdown(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
 
 // RunProvider verifies semantics required from every management provider.
 func RunProvider(t *testing.T, factory Factory) {

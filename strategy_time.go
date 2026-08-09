@@ -1,6 +1,7 @@
 package featureflags
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 )
@@ -132,8 +133,11 @@ func (s ScheduleStrategy) SnapshotStrategy() Strategy {
 }
 
 func weeklyWindowMatches(window WeeklyWindow, weekday time.Weekday, minute int) bool {
-	if window.StartMinute < window.EndMinute {
+	switch cmp.Compare(window.StartMinute, window.EndMinute) {
+	case -1:
 		return weekday == window.Weekday && minute >= window.StartMinute && minute < window.EndMinute
+	case 0:
+		return false
 	}
 	if weekday == window.Weekday && minute >= window.StartMinute {
 		return true

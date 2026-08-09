@@ -15,5 +15,13 @@ Never place secrets or unnecessary personal information in evaluation context,
 metadata, diagnostics, cache keys, metrics, or logs.
 
 The package has no hidden background worker, global mutable client, or context
-scraping. Applications own refresh and scheduling goroutines and must cancel
-and join them during shutdown.
+scraping. `Fleet` starts one refresher only through an explicit `Start` call and
+joins it through `Shutdown`. Applications must stop fleet readiness and join
+the fleet before closing caller-owned provider and cache resources.
+Validated activation is not rolled back when a last-known-good cache write
+fails; bounded refresh and cache failure codes keep the two states observable.
+
+Security-sensitive fleet policies may be fail-closed or use a separately
+bounded last-known-good snapshot. Construction rejects fail-open and explicit
+default behavior for such flags. This protection does not make a feature flag
+an authorization decision.

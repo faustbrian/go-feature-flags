@@ -16,6 +16,10 @@ the PostgreSQL and Valkey environment variables documented in the README.
 | Atomic snapshots and split-brain provider updates | `TestSnapshotsRemainConsistentDuringConcurrentUpdates`, shared provider conformance `immutable snapshots and audit`, `TestDurableProviderSharesAtomicStateAcrossInstances` |
 | Stale cache, provider outage, and clock rollback | `TestCachedProviderFailOpenIsBoundedByOutageStaleness`, `TestCachedProviderFailClosedAndMutationErrorsPreserveState`, `TestCacheConfigurationAndEvictionBoundaries` |
 | Concurrent evaluator, provider, cache, refresh, and shutdown access | `TestCachedProviderIsRaceSafeDuringRefreshUpdateAndShutdown`, `make race`, `TestNoGoroutineLeaks` |
+| Fleet bootstrap, immutable activation, stale policy, and provider outage | `TestFleetBootstrapUsesValidatedPrimarySnapshot`, `TestFleetBootstrapDefinesEmptyStaleMalformedAndUnavailableSources`, `TestFleetRefreshNeverPartiallyActivatesMalformedReplacement` |
+| Duplicate, delayed, reordered, lost, future-clock, and cross-revision invalidation | `TestFleetInvalidationClassifiesGapsDuplicatesReorderingAndRevisions`, `TestFleetConvergenceDeadlineUsesBoundedLocalReceiptTime`, and the Kubernetes fleet simulation |
+| Refresh storms, provider amplification, waiters, cache deadlines, and shutdown | `TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters`, `TestFleetExecutorCannotExceedProviderLoadBudget`, `TestFleetStartJittersRefreshAndShutdownJoinsRefresher`, `TestFleetShutdownCancelsAndJoinsRefreshCacheWork`, race and leak gates |
+| Security-sensitive degraded behavior | `TestFleetRejectsUnsafeSecurityPolicy`, `TestFleetDegradedPoliciesPreserveSecurityAndStalenessBoundaries` |
 | Management validation, optimistic concurrency, audit, groups, and import | The shared `featureflagstest.RunProvider` suite runs against memory, PostgreSQL, and Valkey |
 | OpenFeature context, values, defaults, reasons, lifecycle, and events | The `openfeature` test package covers all compatible types, mapped facts and reasons, default preservation, fixed-tenant context, silent event behavior, and concurrent shutdown |
 | OpenFeature native capability loss | `TestProviderMakesDecimalCapabilityLossExplicit` and `docs/openfeature.md` document decimal, management, groups, dependencies, staging, audit, cache, health, and event-stream limitations |
@@ -25,12 +29,21 @@ the complete digest and bucket, not only an implementation-specific result. It
 includes UTF-8, empty input, tenant separation, and length-framing ambiguity.
 
 The release proof is `make check-all`. It includes format and module checks,
-tests, the race detector, exact production coverage, all four fuzz targets,
+tests, the race detector, exact production coverage, all five fuzz targets,
 targeted mutation cases for strategy, precedence, bucketing, dependency,
-default, tenant, grouping, batching, and scheduling, leak detection,
+default, tenant, grouping, batching, scheduling, fleet freshness, concurrency,
+invalidation, security, lifecycle, and cache behavior, leak detection,
 benchmarks, documentation, workflow validation, lint, static analysis, and
 vulnerability scanning. `make integration` separately makes the shared
 provider conformance run explicit.
+
+The canonical benchmark gate runs equivalent in-memory behavior with
+`-benchmem` and a fixed 100 ms minimum sample per benchmark. It publishes
+`ns/op`, implied operations per second, bytes per operation, allocations per
+operation, Go version, OS, and architecture in the gate artifact. Release
+comparisons use at least ten independent `-count=10` samples from the same
+corpus and environment and compare them with `benchstat`; a single benchmark
+run is smoke evidence, not a statistically significant regression claim.
 
 Feature flags remain product-rollout inputs, never authorization decisions.
 No passing evaluator result weakens or replaces an independent authorization

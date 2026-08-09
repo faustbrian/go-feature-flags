@@ -2,9 +2,11 @@ package featureflags
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"time"
 )
@@ -95,9 +97,9 @@ func Export(definitions []Definition, groups []GroupDefinition, limits Limits) (
 		return nil, err
 	}
 	features := append([]Definition(nil), definitions...)
-	sort.Slice(features, func(i, j int) bool { return features[i].Key < features[j].Key })
+	slices.SortFunc(features, func(left, right Definition) int { return cmp.Compare(left.Key, right.Key) })
 	groupDefinitions := append([]GroupDefinition(nil), groups...)
-	sort.Slice(groupDefinitions, func(i, j int) bool { return groupDefinitions[i].Key < groupDefinitions[j].Key })
+	slices.SortFunc(groupDefinitions, func(left, right GroupDefinition) int { return cmp.Compare(left.Key, right.Key) })
 
 	document := documentWire{Format: documentFormat, Version: documentVersion}
 	for _, definition := range features {
@@ -177,11 +179,11 @@ func encodeDefinition(definition Definition) (definitionWire, error) {
 		}
 	}
 	dependencies := append([]Dependency(nil), definition.Dependencies...)
-	sort.Slice(dependencies, func(i, j int) bool {
-		if dependencies[i].FeatureKey == dependencies[j].FeatureKey {
-			return dependencies[i].RequiredVariant < dependencies[j].RequiredVariant
+	slices.SortFunc(dependencies, func(left, right Dependency) int {
+		if order := cmp.Compare(left.FeatureKey, right.FeatureKey); order != 0 {
+			return order
 		}
-		return dependencies[i].FeatureKey < dependencies[j].FeatureKey
+		return cmp.Compare(left.RequiredVariant, right.RequiredVariant)
 	})
 	for _, dependency := range dependencies {
 		wire.Dependencies = append(wire.Dependencies, dependencyWire(dependency))

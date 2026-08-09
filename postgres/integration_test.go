@@ -34,4 +34,11 @@ func TestProviderConformance(t *testing.T) {
 		}
 		return featurepostgres.New(pool, featureflags.DefaultLimits())
 	})
+	featureflagstest.RunFleet(t, func(t *testing.T) featureflags.Provider {
+		t.Helper()
+		if _, err := pool.Exec(t.Context(), "TRUNCATE feature_flag_tenant_state"); err != nil {
+			t.Fatalf("truncate provider state: %v", err)
+		}
+		return featurepostgres.New(pool, featureflags.DefaultLimits())
+	})
 }

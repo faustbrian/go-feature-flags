@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 )
@@ -306,7 +307,7 @@ func marshalTenantState(provider *MemoryProvider, tenant string) ([]byte, error)
 	for id := range provider.staged[tenant] {
 		stageIDs = append(stageIDs, id)
 	}
-	sort.Slice(stageIDs, func(i, j int) bool { return stageIDs[i] < stageIDs[j] })
+	slices.Sort(stageIDs)
 	for _, id := range stageIDs {
 		change := provider.staged[tenant][id]
 		encoded, err := encodeDefinition(change.Definition)

@@ -5,6 +5,7 @@ required=(
 	README.md CHANGELOG.md SECURITY.md LICENSE
 	docs/native-api.md docs/providers.md docs/openfeature.md docs/migration.md
 	docs/cookbook.md docs/faq.md docs/compatibility.md docs/hardening.md
+	docs/fleet.md
 )
 for file in "${required[@]}"; do
 	if [[ ! -s "$file" ]]; then

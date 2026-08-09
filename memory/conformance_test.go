@@ -12,4 +12,8 @@ func TestProviderConformance(t *testing.T) {
 		t.Helper()
 		return featureflags.NewMemoryProvider(featureflags.DefaultLimits())
 	})
+	featureflagstest.RunFleet(t, func(t *testing.T) featureflags.Provider {
+		t.Helper()
+		return featureflags.NewMemoryProvider(featureflags.DefaultLimits())
+	})
 }

@@ -1,6 +1,7 @@
 package featureflags
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"sync"
@@ -491,7 +492,7 @@ func (p *MemoryProvider) appendAudit(tenant, key string, action AuditAction, act
 		Actor:      actor,
 		Version:    version,
 	})
-	if excess := len(entries) - p.limits.MaxAuditEntries; excess > 0 {
+	if excess := len(entries) - p.limits.MaxAuditEntries; cmp.Compare(excess, 0) == 1 {
 		entries = append([]AuditEntry(nil), entries[excess:]...)
 	}
 	p.audit[tenant] = entries

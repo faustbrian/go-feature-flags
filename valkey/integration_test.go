@@ -40,6 +40,15 @@ func TestProviderConformance(t *testing.T) {
 			featureflags.DefaultLimits(),
 		)
 	})
+	featureflagstest.RunFleet(t, func(t *testing.T) featureflags.Provider {
+		t.Helper()
+		prefix := runPrefix + strconv.FormatUint(sequence.Add(1), 10)
+		return featurevalkey.New(
+			transport,
+			featurevalkey.Config{Prefix: prefix},
+			featureflags.DefaultLimits(),
+		)
+	})
 }
 
 func TestNativeTransportRejectsCorruptStateAndCancellation(t *testing.T) {

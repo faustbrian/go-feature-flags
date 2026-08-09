@@ -33,6 +33,11 @@ used. Successful mutations invalidate the affected tenant.
 Do not use fail-open for a flag whose stale enabled state would be unsafe.
 Feature flags remain unsuitable for authorization regardless of cache policy.
 
+`ProviderSnapshotLoader` derives revisions through the portable export codec.
+Providers that retain custom strategies or authoritative commit timestamps
+should implement `SnapshotLoader` directly so revision, provenance, and source
+age remain provider-owned.
+
 ## Staging, audit, and cleanup
 
 `StageUpdate` records an expected feature version and optional application
@@ -61,3 +66,7 @@ Health codes are low-cardinality and contain no tenant or context data. Treat a
 failed health result as provider unavailability, not as an evaluation answer.
 Applications decide whether to use a bounded cache, a local default, or return
 an error. Do not silently convert storage failure into an enabled flag.
+
+For multi-replica operation, use `ProviderSnapshotLoader` and `Fleet`. Fleet
+startup, invalidation, resilience composition, bounded convergence, and
+shutdown are specified in [fleet.md](fleet.md).

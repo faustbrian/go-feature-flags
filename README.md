@@ -60,7 +60,7 @@ subject with stable length-delimited SHA-256 input.
 
 | Package | Purpose |
 |---|---|
-| root | native values, strategies, snapshots, providers, cache, import/export |
+| root | native values, strategies, snapshots, providers, cache, fleet refresh, import/export |
 | `memory` | shared conformance test for the in-process provider |
 | `postgres` | atomic PostgreSQL document backend and provider |
 | `valkey` | atomic Valkey document backend and provider |
@@ -70,16 +70,19 @@ subject with stable length-delimited SHA-256 input.
 ## Guarantees and boundaries
 
 - Evaluation uses only caller-supplied context; there is no global client,
-  hidden clock, context scraping, or background refresher.
+  hidden clock, or context scraping. `Fleet` is an explicit optional refresher.
 - Snapshots deep-copy definitions and bind one tenant for request consistency.
 - Every management mutation uses optimistic feature or group versions.
 - Memory, PostgreSQL, and Valkey share the same provider contract.
 - Cache fallback is explicitly fail-open or fail-closed and time-bounded.
+- Fleet startup, jitter, provider load, invalidation convergence, degraded
+  evaluation, and shutdown are explicit and bounded.
 - Feature flags are not authentication or authorization controls.
 
 See [the native reference](docs/native-api.md),
 [provider operations](docs/providers.md), [OpenFeature mapping](docs/openfeature.md),
 [hardening evidence](docs/hardening.md), [security](SECURITY.md),
+[fleet and Kubernetes operation](docs/fleet.md),
 [cookbook](docs/cookbook.md), and [FAQ](docs/faq.md).
 
 ## Development

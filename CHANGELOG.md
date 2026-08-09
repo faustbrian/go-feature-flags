@@ -16,3 +16,6 @@ Versioning after its first stable release.
   optimistic concurrency, audit, staging, cleanup, and import/export.
 - Added bounded fail-open or fail-closed caching and an optional OpenFeature
   evaluation adapter.
+- Added explicit fleet bootstrap, immutable last-known-good metadata, bounded
+  refresh and invalidation convergence, per-flag degraded policy, deterministic
+  replica jitter, resilience composition seams, and joined shutdown semantics.
