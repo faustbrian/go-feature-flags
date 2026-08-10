@@ -107,11 +107,22 @@ stream.
 Invalidation is a hint, not state. Lost Valkey publications are repaired by
 the periodic refresh. `ConvergenceWindow` must cover the configured refresh,
 jitter, and load timeout bound. `Status` exposes revision, provenance, age,
-provider-load count, invalidation gaps, refresh waiters, and convergence state
-without retaining tenant values, raw provider errors, or evaluation context.
-`LastRefreshFailure` and `LastCacheFailure` use bounded failure codes. A cache
-store failure never rolls back a fully validated activation; it is reported
-independently and a later successful store clears it.
+provider-load count, invalidation gaps, refresh waiters, watcher-running state,
+and convergence state without retaining tenant values, raw provider errors, or
+evaluation context.
+`LastRefreshFailure`, `LastCacheFailure`, and `LastWatcherFailure` use bounded
+failure codes. A cache store failure never rolls back a fully validated
+activation; it is reported independently and a later successful store clears
+it.
+
+An optional `InvalidationWatcher` lets `Start` own exactly one cooperative
+delivery loop. `Next` receives the fleet tenant and lifecycle context and MUST
+unblock when that context is cancelled. The watcher owns its transport,
+reconnection, and retry policy; Fleet adds no nested retry. Invalid events are
+reported as `FleetFailureInvalidation`, watcher termination is reported as
+`FleetFailureWatcher`, and provider refresh failures retain their provider or
+caller-owned resilience classification. Periodic refresh continues after a
+watcher terminates.
 
 ## Degraded evaluation
 
@@ -150,14 +161,15 @@ a flag result as proof of authorization.
   Per-flag policy controls stale evaluation; retries remain bounded by the
   executor, timeout, shared budget, and provider-load cap.
 - **Valkey invalidation loss:** a sequence gap triggers refresh; a completely
-  lost notification converges through the periodic refresh.
+  lost notification or terminated watcher converges through the periodic
+  refresh.
 - **Scale-down and SIGTERM:** fail readiness, call `Shutdown` with a pod
   termination deadline, then close caller-owned provider and cache resources.
-  Shutdown cancels fleet provider work, joins the refresher and refresh calls,
-  and rejects new bootstrap, start, refresh, and activation work. Evaluation
-  from the immutable current snapshot remains available for already admitted
-  requests and still obeys freshness and per-flag degraded policy. Shutdown
-  never closes caller-owned dependencies.
+  Shutdown cancels fleet provider and watcher work, joins the refresher,
+  watcher, and refresh calls, and rejects new bootstrap, start, refresh, and
+  activation work. Evaluation from the immutable current snapshot remains
+  available for already admitted requests and still obeys freshness and
+  per-flag degraded policy. Shutdown never closes caller-owned dependencies.
 
 Set the Kubernetes termination grace period longer than the application drain
 plus fleet shutdown budget. A loader that ignores cancellation retains its

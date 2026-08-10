@@ -15,9 +15,10 @@ Never place secrets or unnecessary personal information in evaluation context,
 metadata, diagnostics, cache keys, metrics, or logs.
 
 The package has no hidden background worker, global mutable client, or context
-scraping. `Fleet` starts one refresher only through an explicit `Start` call and
-joins it through `Shutdown`. Applications must stop fleet readiness and join
-the fleet before closing caller-owned provider and cache resources.
+scraping. `Fleet` starts one refresher and at most one configured invalidation
+watcher only through an explicit `Start` call and joins them through
+`Shutdown`. Applications must stop fleet readiness and join the fleet before
+closing caller-owned provider, cache, and watcher resources.
 Validated activation is not rolled back when a last-known-good cache write
 fails; bounded refresh and cache failure codes keep the two states observable.
 

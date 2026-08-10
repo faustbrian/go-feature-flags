@@ -75,8 +75,8 @@ subject with stable length-delimited SHA-256 input.
 - Every management mutation uses optimistic feature or group versions.
 - Memory, PostgreSQL, and Valkey share the same provider contract.
 - Cache fallback is explicitly fail-open or fail-closed and time-bounded.
-- Fleet startup, jitter, provider load, invalidation convergence, degraded
-  evaluation, and shutdown are explicit and bounded.
+- Fleet startup, jitter, provider load, watcher delivery, invalidation
+  convergence, degraded evaluation, and shutdown are explicit and bounded.
 - Feature flags are not authentication or authorization controls.
 
 See [the native reference](docs/native-api.md),

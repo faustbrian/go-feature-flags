@@ -46,6 +46,13 @@ run_mutant fleet_staleness_boundary fleet.go 'age > fleet.config.MaxStaleness' '
 run_mutant fleet_lkg_boundary fleet.go 'cmp.Compare(active.Age(fleet.now()), policy.MaxStaleness) == 1' 'cmp.Compare(active.Age(fleet.now()), policy.MaxStaleness) != 1' 'TestFleetDegradedPoliciesPreserveSecurityAndStalenessBoundaries'
 run_mutant fleet_security_policy fleet.go 'policy.Mode == DegradedFailOpen || policy.Mode == DegradedDefault' 'policy.Mode == DegradedFailOpen && policy.Mode == DegradedDefault' 'TestFleetRejectsUnsafeSecurityPolicy'
 run_mutant fleet_jitter_bound fleet.go '% (uint64(maximum) + 1)' '% uint64(maximum)' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_empty_replica fleet.go 'replica == ""' 'replica != ""' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_replica_bound fleet.go 'cmp.Compare(len(replica), maxFleetIdentityLength) == 1' 'cmp.Compare(len(replica), maxFleetIdentityLength) != 1' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_zero_sequence fleet.go 'sequence == 0' 'sequence != 0' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_negative_maximum fleet.go 'cmp.Compare(maximum, time.Duration(0)) == -1' 'cmp.Compare(maximum, time.Duration(0)) != -1' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_maximum_inversion fleet.go 'cmp.Compare(maximum, time.Duration(0)) == -1' 'cmp.Compare(maximum, time.Duration(0)) == 1' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_maximum_arithmetic_base fleet.go 'cmp.Compare(maximum, time.Duration(0)) == -1' 'cmp.Compare(maximum, time.Duration(0)) == 0' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
+run_mutant fleet_jitter_modulus_base fleet.go '(uint64(maximum) + 1)' '(uint64(maximum) + 0)' 'TestFleetAdaptersAndSystemSchedulingValidateBoundaryFailures'
 run_mutant fleet_scheduler_failure fleet.go 'if ctx.Err() == nil {
 				fleet.recordRefreshFailure(FleetFailureScheduler)' 'if ctx.Err() != nil {
 				fleet.recordRefreshFailure(FleetFailureScheduler)' 'TestFleetSleeperFailureStopsBackgroundRefresherObservably'
@@ -99,5 +106,32 @@ run_mutant fleet_provider_concurrency_maximum fleet.go 'maxFleetConcurrentProvid
 run_mutant fleet_invalidation_stream_maximum fleet.go 'maxFleetInvalidationStreams     = 10_000' 'maxFleetInvalidationStreams     = 10_001' 'TestFleetConfigurationRejectsEveryUnboundedOrUnsafeShape/excess_invalidation_streams'
 run_mutant fleet_policy_maximum fleet.go 'cmp.Compare(config.MaxPolicies, DefaultLimits().MaxFeatures) == 1' 'cmp.Compare(config.MaxPolicies, DefaultLimits().MaxFeatures + 1) == 1' 'TestFleetConfigurationRejectsEveryUnboundedOrUnsafeShape/excess_policy_bound'
 run_mutant fleet_load_duration_overflow fleet.go 'if cmp.Compare(config.LoadTimeout, time.Duration(math.MaxInt64)-refreshBound) == 1 {' 'if false && cmp.Compare(config.LoadTimeout, time.Duration(math.MaxInt64)-refreshBound) == 1 {' 'TestFleetConfigurationRejectsEveryUnboundedOrUnsafeShape/overflow_load_bound'
+run_mutant fleet_start_bootstrap_success fleet.go 'active, err := fleet.Bootstrap(ctx)
+	fleet.mu.Lock()
+	fleet.starting = false
+	if err != nil {' 'active, err := fleet.Bootstrap(ctx)
+	fleet.mu.Lock()
+	fleet.starting = false
+	if err == nil {' 'TestFleetWithoutWatcherStartsAndShutsDownWithinBound'
+run_mutant fleet_watcher_registration fleet.go 'if watcher == nil {' 'if watcher != nil {' 'TestFleetWithoutWatcherStartsAndShutsDownWithinBound'
+run_mutant fleet_jitter_error_short_circuit fleet.go 'if err != nil || cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'if err == nil || cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'TestFleetInvalidJitterStopsBackgroundRefresher'
+run_mutant fleet_negative_jitter_condition fleet.go 'cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'cmp.Compare(jitter, time.Duration(0)) != -1 ||' 'TestFleetInvalidJitterStopsBackgroundRefresher'
+run_mutant fleet_negative_jitter_inversion fleet.go 'cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'cmp.Compare(jitter, time.Duration(0)) == 1 ||' 'TestFleetInvalidJitterStopsBackgroundRefresher'
+run_mutant fleet_negative_jitter_arithmetic_base fleet.go 'cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'cmp.Compare(jitter, time.Duration(0)) == 0 ||' 'TestFleetInvalidJitterStopsBackgroundRefresher'
+run_mutant fleet_jitter_upper_bound fleet.go 'cmp.Compare(jitter, fleet.config.MaxRefreshJitter) == 1 {' 'cmp.Compare(jitter, fleet.config.MaxRefreshJitter) != 1 {' 'TestFleetInvalidJitterStopsBackgroundRefresher'
+run_mutant fleet_sleeper_terminal_error fleet.go 'if err := fleet.config.Sleeper.Sleep(ctx, fleet.config.RefreshInterval+jitter); err != nil {' 'if err := fleet.config.Sleeper.Sleep(ctx, fleet.config.RefreshInterval+jitter); err == nil {' 'TestFleetSleeperFailureStopsBackgroundRefresherObservably'
+run_mutant fleet_counter_saturation_loop fleet.go 'current == math.MaxUint64 || counter.CompareAndSwap(current, current+1)' 'current == math.MaxUint64 && counter.CompareAndSwap(current, current+1)' 'TestFleetOperationalCountersSaturateInsteadOfWrapping'
+run_mutant fleet_watcher_source_failure fleet.go 'if err != nil {
+			if ctx.Err() == nil {
+				fleet.recordWatcherFailure(FleetFailureWatcher)' 'if err != nil {
+			if ctx.Err() != nil {
+				fleet.recordWatcherFailure(FleetFailureWatcher)' 'TestFleetWatcherFailureIsObservableWithoutProviderMisclassification'
+run_mutant fleet_watcher_invalidation_classification fleet.go 'errors.Is(err, ErrInvalidInvalidation) || errors.Is(err, ErrInvalidationStreams)' 'errors.Is(err, ErrInvalidInvalidation) && errors.Is(err, ErrInvalidationStreams)' 'TestFleetWatcherClassifiesDeliveryFailuresAndRecovers'
+run_mutant fleet_watcher_recovery fleet.go 'fleet.recordWatcherFailure(FleetFailureNone)' 'fleet.recordWatcherFailure(FleetFailureWatcher)' 'TestFleetWatcherDeliversCausalInvalidationsAndJoinsShutdown'
+run_mutant fleet_watcher_terminal_error fleet.go 'fleet.recordWatcherFailure(FleetFailureWatcher)
+			}
+			return' 'fleet.recordWatcherFailure(FleetFailureWatcher)
+			}
+			continue' 'TestFleetWatcherFailureIsObservableWithoutProviderMisclassification'
 
-echo 'mutation score: 49/49 killed (100.0%)'
+echo 'mutation score: 69/69 killed (100.0%)'

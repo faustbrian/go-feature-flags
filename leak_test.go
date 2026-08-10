@@ -39,7 +39,7 @@ func TestNoGoroutineLeaks(t *testing.T) {
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	<-sleeper.delays
+	waitForFleetEvent(t, sleeper.delays, "leak-check refresh schedule")
 	if err := fleet.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -15,11 +15,11 @@ the PostgreSQL and Valkey environment variables documented in the README.
 | Cross-tenant evaluation or management | `TestMemoryProviderUpdateIsTenantScopedAndOptimistic`, shared provider conformance `tenant isolation`, OpenFeature cross-tenant context test, mutation case `tenant_binding` |
 | Atomic snapshots and split-brain provider updates | `TestSnapshotsRemainConsistentDuringConcurrentUpdates`, shared provider conformance `immutable snapshots and audit`, `TestDurableProviderSharesAtomicStateAcrossInstances` |
 | Stale cache, provider outage, and clock rollback | `TestCachedProviderFailOpenIsBoundedByOutageStaleness`, `TestCachedProviderFailClosedAndMutationErrorsPreserveState`, `TestCacheConfigurationAndEvictionBoundaries` |
-| Concurrent evaluator, provider, cache, refresh, and shutdown access | `TestCachedProviderIsRaceSafeDuringRefreshUpdateAndShutdown`, `make race`, `TestNoGoroutineLeaks` |
+| Concurrent evaluator, provider, cache, refresh, watcher delivery, and shutdown access | `TestCachedProviderIsRaceSafeDuringRefreshUpdateAndShutdown`, `TestFleetConcurrentEvaluationActivationAndInvalidation`, `TestFleetWatcherDeliversCausalInvalidationsAndJoinsShutdown`, `make race`, `TestNoGoroutineLeaks` |
 | Fleet bootstrap, immutable activation, stale policy, and provider outage | `TestFleetBootstrapUsesValidatedPrimarySnapshot`, `TestFleetBootstrapDefinesEmptyStaleMalformedAndUnavailableSources`, `TestFleetRefreshNeverPartiallyActivatesMalformedReplacement` |
 | Duplicate, delayed, reordered, lost, future-clock, and cross-revision invalidation | `TestFleetInvalidationClassifiesGapsDuplicatesReorderingAndRevisions`, `TestFleetConvergenceDeadlineUsesBoundedLocalReceiptTime`, and the Kubernetes fleet simulation |
-| Refresh storms, provider amplification, waiters, cache deadlines, and shutdown | `TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters`, `TestFleetExecutorCannotExceedProviderLoadBudget`, `TestFleetStartJittersRefreshAndShutdownJoinsRefresher`, `TestFleetShutdownCancelsAndJoinsRefreshCacheWork`, race and leak gates |
-| Security-sensitive degraded behavior | `TestFleetRejectsUnsafeSecurityPolicy`, `TestFleetDegradedPoliciesPreserveSecurityAndStalenessBoundaries` |
+| Refresh storms, provider amplification, waiters, cache deadlines, and shutdown | `TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters`, `TestFleetExecutorCannotExceedProviderLoadBudget`, `TestFleetKubernetesConcurrentColdPodsBoundSharedOverloadAndRecover`, `TestFleetStartJittersRefreshAndShutdownJoinsRefresher`, `TestFleetShutdownCancelsAndJoinsRefreshCacheWork`, race and leak gates |
+| Security-sensitive degraded behavior | `TestFleetRejectsUnsafeSecurityPolicy`, `TestFleetDegradedPoliciesPreserveSecurityAndStalenessBoundaries`, the `TestFleetSecuritySensitiveLastKnownGoodAcross*` matrix, and watcher failure tests cross every bounded failure class with fresh, degraded, maximum, and expired last-known-good windows |
 | Management validation, optimistic concurrency, audit, groups, and import | The shared `featureflagstest.RunProvider` suite runs against memory, PostgreSQL, and Valkey |
 | OpenFeature context, values, defaults, reasons, lifecycle, and events | The `openfeature` test package covers all compatible types, mapped facts and reasons, default preservation, fixed-tenant context, silent event behavior, and concurrent shutdown |
 | OpenFeature native capability loss | `TestProviderMakesDecimalCapabilityLossExplicit` and `docs/openfeature.md` document decimal, management, groups, dependencies, staging, audit, cache, health, and event-stream limitations |
@@ -28,14 +28,12 @@ The language-neutral bucketing fixture at `testdata/bucketing-v1.json` freezes
 the complete digest and bucket, not only an implementation-specific result. It
 includes UTF-8, empty input, tenant separation, and length-framing ambiguity.
 
-The release proof is `make check-all`. It includes format and module checks,
-tests, the race detector, exact production coverage, all five fuzz targets,
-targeted mutation cases for strategy, precedence, bucketing, dependency,
-default, tenant, grouping, batching, scheduling, fleet freshness, concurrency,
-invalidation, security, lifecycle, and cache behavior, leak detection,
-benchmarks, documentation, workflow validation, lint, static analysis, and
-vulnerability scanning. `make integration` separately makes the shared
-provider conformance run explicit.
+From the repository root, the release proof is
+`make check MODULES=pkg/feature-flags`. It runs the canonical gate list,
+including exact coverage and exhaustive mutation, race, fuzz, provider
+interoperability, API, documentation, benchmark, vulnerability, secret,
+license, and SBOM checks. Package-local `make check-all` is a faster source
+gate and does not replace the repository release or provider gates.
 
 The canonical benchmark gate runs equivalent in-memory behavior with
 `-benchmem` and a fixed 100 ms minimum sample per benchmark. It publishes

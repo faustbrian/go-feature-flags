@@ -104,6 +104,18 @@ func (sleeper *fleetTestSleeper) Sleep(ctx context.Context, delay time.Duration)
 	}
 }
 
+func waitForFleetEvent[T any](t testing.TB, events <-chan T, description string) T {
+	t.Helper()
+	select {
+	case event := <-events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", description)
+		var zero T
+		return zero
+	}
+}
+
 type fleetSequenceLoader struct {
 	mu         sync.Mutex
 	candidates []SnapshotCandidate
@@ -517,7 +529,7 @@ func TestFleetStartJittersRefreshAndShutdownJoinsRefresher(t *testing.T) {
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	delay := <-sleeper.delays
+	delay := waitForFleetEvent(t, sleeper.delays, "initial refresh schedule")
 	if delay < config.RefreshInterval || delay > config.RefreshInterval+config.MaxRefreshJitter {
 		t.Fatalf("refresh delay %s is outside configured jitter bound", delay)
 	}
@@ -628,7 +640,7 @@ func TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters(t *testing.T) {
 		result, err := fleet.Refresh(context.Background())
 		first <- refreshOutcome{result: result, err: err}
 	}()
-	<-loader.entered
+	waitForFleetEvent(t, loader.entered, "leader provider load")
 	second := make(chan refreshOutcome, 1)
 	go func() {
 		result, err := fleet.Refresh(context.Background())
@@ -645,8 +657,8 @@ func TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters(t *testing.T) {
 		t.Fatalf("excess waiter = %v", err)
 	}
 	close(loader.release)
-	firstResult := <-first
-	secondResult := <-second
+	firstResult := waitForFleetEvent(t, first, "leader refresh result")
+	secondResult := waitForFleetEvent(t, second, "coalesced refresh result")
 	if firstResult.err != nil || secondResult.err != nil || secondResult.result.Coalesced != true {
 		t.Fatalf("refresh results = %#v %#v", firstResult, secondResult)
 	}
@@ -811,16 +823,16 @@ func TestFleetBoundsConcurrentPhysicalLoadsInsideExecutor(t *testing.T) {
 		_, bootstrapErr := fleet.Bootstrap(context.Background())
 		bootstrapDone <- bootstrapErr
 	}()
-	<-entered
+	waitForFleetEvent(t, entered, "first physical provider load")
 	select {
 	case <-entered:
 		t.Fatal("executor exceeded the physical provider concurrency bound")
 	case <-time.After(20 * time.Millisecond):
 	}
 	release <- struct{}{}
-	<-entered
+	waitForFleetEvent(t, entered, "second physical provider load")
 	release <- struct{}{}
-	if err := <-bootstrapDone; err != nil {
+	if err := waitForFleetEvent(t, bootstrapDone, "bounded executor bootstrap"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -914,12 +926,12 @@ func TestFleetQueuedPhysicalLoadHonorsAttemptCancellation(t *testing.T) {
 		_, bootstrapErr := fleet.Bootstrap(context.Background())
 		bootstrapDone <- bootstrapErr
 	}()
-	<-secondQueued
+	waitForFleetEvent(t, secondQueued, "queued provider attempt")
 	time.Sleep(20 * time.Millisecond)
 	cancelSecond()
-	<-secondCancelled
+	waitForFleetEvent(t, secondCancelled, "queued provider cancellation")
 	close(releaseFirst)
-	if err := <-bootstrapDone; err != nil {
+	if err := waitForFleetEvent(t, bootstrapDone, "executor bootstrap completion"); err != nil {
 		t.Fatal(err)
 	}
 	if providerCalls.Load() != 1 {
@@ -1238,9 +1250,9 @@ func TestFleetShutdownCancelsAndJoinsActiveProviderLoad(t *testing.T) {
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	<-sleeper.delays
+	waitForFleetEvent(t, sleeper.delays, "shutdown refresh schedule")
 	sleeper.release <- struct{}{}
-	<-loader.entered
+	waitForFleetEvent(t, loader.entered, "shutdown provider load")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := fleet.Shutdown(shutdownCtx); err != nil {
@@ -1270,9 +1282,9 @@ func TestFleetShutdownReportsLoaderThatIgnoresCancellation(t *testing.T) {
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	<-sleeper.delays
+	waitForFleetEvent(t, sleeper.delays, "stuck-loader refresh schedule")
 	sleeper.release <- struct{}{}
-	<-loader.entered
+	waitForFleetEvent(t, loader.entered, "stuck provider load")
 	deadlineCtx, cancelDeadline := context.WithCancel(context.Background())
 	cancelDeadline()
 	if err := fleet.Shutdown(deadlineCtx); !errors.Is(err, context.Canceled) {
@@ -1386,13 +1398,13 @@ func TestFleetShutdownCancelsAndJoinsRefreshCacheWork(t *testing.T) {
 		_, refreshErr := fleet.Refresh(context.Background())
 		refreshDone <- refreshErr
 	}()
-	<-cache.entered
+	waitForFleetEvent(t, cache.entered, "refresh cache store")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := fleet.Shutdown(shutdownCtx); err != nil {
 		t.Fatalf("shutdown did not cancel cache work: %v", err)
 	}
-	if err := <-refreshDone; err != nil {
+	if err := waitForFleetEvent(t, refreshDone, "cache-cancelled refresh completion"); err != nil {
 		t.Fatalf("validated refresh was undone by cache cancellation: %v", err)
 	}
 }

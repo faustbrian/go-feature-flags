@@ -19,3 +19,5 @@ Versioning after its first stable release.
 - Added explicit fleet bootstrap, immutable last-known-good metadata, bounded
   refresh and invalidation convergence, per-flag degraded policy, deterministic
   replica jitter, resilience composition seams, and joined shutdown semantics.
+- Added caller-owned invalidation watchers with bounded failure classification
+  and shutdown joining, plus concurrent cold-pod overload recovery semantics.

@@ -109,6 +109,20 @@ type SnapshotCache interface {
 	Store(context.Context, string, SnapshotCandidate) error
 }
 
+// InvalidationWatcher delivers one tenant's invalidations in source order.
+// Next must unblock when its context is cancelled. Reconnection, retry, and
+// transport ownership remain with the implementation.
+type InvalidationWatcher interface {
+	Next(context.Context, string) (Invalidation, error)
+}
+
+// InvalidationWatchFunc adapts a function to InvalidationWatcher.
+type InvalidationWatchFunc func(context.Context, string) (Invalidation, error)
+
+func (function InvalidationWatchFunc) Next(ctx context.Context, tenant string) (Invalidation, error) {
+	return function(ctx, tenant)
+}
+
 // RefreshOperation is one complete provider load.
 type RefreshOperation func(context.Context) (SnapshotCandidate, error)
 
@@ -223,6 +237,7 @@ type FleetConfig struct {
 	ReplicaID                  string
 	Loader                     SnapshotLoader
 	Cache                      SnapshotCache
+	Watcher                    InvalidationWatcher
 	Executor                   RefreshExecutor
 	FailureClassifier          FleetFailureClassifier
 	Clock                      CacheClock
@@ -292,6 +307,8 @@ const (
 	FleetFailureThrottled       FleetFailureCode = "throttled"
 	FleetFailureConcurrency     FleetFailureCode = "concurrency_rejected"
 	FleetFailureBudgetExhausted FleetFailureCode = "budget_exhausted"
+	FleetFailureWatcher         FleetFailureCode = "watcher_failure"
+	FleetFailureInvalidation    FleetFailureCode = "invalidation_failure"
 )
 
 // FleetStatus is a bounded observable view. It never retains provider errors,
@@ -304,10 +321,12 @@ type FleetStatus struct {
 	ProviderLoads       uint64
 	LastRefreshFailure  FleetFailureCode
 	LastCacheFailure    FleetFailureCode
+	LastWatcherFailure  FleetFailureCode
 	InvalidationGaps    uint64
 	ConvergenceDeadline time.Time
 	ConvergenceBreached bool
 	Refreshing          bool
+	WatcherRunning      bool
 	RefreshWaiters      int
 }
 
@@ -378,6 +397,7 @@ type Fleet struct {
 	state               FleetState
 	lastRefreshFailure  FleetFailureCode
 	lastCacheFailure    FleetFailureCode
+	lastWatcherFailure  FleetFailureCode
 	providerLoads       atomic.Uint64
 	refresh             *refreshFlight
 	waiters             int
@@ -394,6 +414,7 @@ type Fleet struct {
 	runWG               sync.WaitGroup
 	started             bool
 	starting            bool
+	watcherRunning      bool
 	loadSlots           chan struct{}
 	loadWG              sync.WaitGroup
 	bootstrapWG         sync.WaitGroup
@@ -646,9 +667,46 @@ func (fleet *Fleet) Start(ctx context.Context) (ActiveSnapshot, error) {
 	fleet.runCancel = cancel
 	fleet.started = true
 	fleet.runWG.Add(1)
+	fleet.startWatcherLocked(runCtx)
 	fleet.mu.Unlock()
 	go fleet.refreshLoop(runCtx)
 	return active, nil
+}
+
+func (fleet *Fleet) startWatcherLocked(ctx context.Context) {
+	watcher := fleet.config.Watcher
+	if watcher == nil {
+		return
+	}
+	fleet.runWG.Add(1)
+	fleet.watcherRunning = true
+	go fleet.watchLoop(ctx, watcher)
+}
+
+func (fleet *Fleet) watchLoop(ctx context.Context, watcher InvalidationWatcher) {
+	defer func() {
+		fleet.mu.Lock()
+		fleet.watcherRunning = false
+		fleet.mu.Unlock()
+		fleet.runWG.Done()
+	}()
+	for {
+		event, err := watcher.Next(ctx, fleet.config.Tenant)
+		if err != nil {
+			if ctx.Err() == nil {
+				fleet.recordWatcherFailure(FleetFailureWatcher)
+			}
+			return
+		}
+		if _, err := fleet.Invalidate(ctx, event); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			fleet.recordWatcherFailure(fleet.classifyWatcherFailure(err))
+			continue
+		}
+		fleet.recordWatcherFailure(FleetFailureNone)
+	}
 }
 
 func (fleet *Fleet) refreshLoop(ctx context.Context) {
@@ -680,6 +738,21 @@ func (fleet *Fleet) recordRefreshFailure(failure FleetFailureCode) {
 	fleet.lastRefreshFailure = failure
 	fleet.degradeIfStaleLocked(now)
 	fleet.mu.Unlock()
+}
+
+func (fleet *Fleet) recordWatcherFailure(failure FleetFailureCode) {
+	now := fleet.now()
+	fleet.mu.Lock()
+	fleet.lastWatcherFailure = failure
+	fleet.degradeIfStaleLocked(now)
+	fleet.mu.Unlock()
+}
+
+func (fleet *Fleet) classifyWatcherFailure(err error) FleetFailureCode {
+	if errors.Is(err, ErrInvalidInvalidation) || errors.Is(err, ErrInvalidationStreams) {
+		return FleetFailureInvalidation
+	}
+	return fleet.classifyRefreshFailure(err)
 }
 
 func (fleet *Fleet) degradeIfStaleLocked(now time.Time) {
@@ -749,8 +822,8 @@ func (fleet *Fleet) markStopped() {
 	lifecycleCancel()
 }
 
-// Shutdown cancels provider work, stops the refresher, and joins all refresh
-// calls without closing caller-owned providers or caches.
+// Shutdown cancels provider work, stops the refresher and watcher, and joins
+// all fleet work without closing caller-owned providers, caches, or watchers.
 func (fleet *Fleet) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("shutdown context is required")
@@ -966,10 +1039,10 @@ func (fleet *Fleet) Status() FleetStatus {
 	status := FleetStatus{
 		State: fleet.state, Revision: fleet.active.Revision,
 		Provenance: fleet.active.Provenance, LastRefreshFailure: fleet.lastRefreshFailure,
-		LastCacheFailure: fleet.lastCacheFailure,
-		ProviderLoads:    fleet.providerLoads.Load(), InvalidationGaps: fleet.invalidationGaps,
+		LastCacheFailure: fleet.lastCacheFailure, LastWatcherFailure: fleet.lastWatcherFailure,
+		ProviderLoads: fleet.providerLoads.Load(), InvalidationGaps: fleet.invalidationGaps,
 		ConvergenceDeadline: fleet.convergence, Refreshing: fleet.refresh != nil,
-		RefreshWaiters: fleet.waiters,
+		WatcherRunning: fleet.watcherRunning, RefreshWaiters: fleet.waiters,
 	}
 	if fleet.hasActive {
 		status.Age = fleet.active.Age(now)

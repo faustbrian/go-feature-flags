@@ -16,9 +16,17 @@ type invalidFleetJitter struct {
 	err   error
 }
 
-type errorFleetSleeper struct{ err error }
+type errorFleetSleeper struct {
+	err   error
+	calls atomic.Uint64
+}
 
-func (sleeper errorFleetSleeper) Sleep(context.Context, time.Duration) error { return sleeper.err }
+func (sleeper *errorFleetSleeper) Sleep(context.Context, time.Duration) error {
+	if calls := sleeper.calls.Add(1); calls != 1 {
+		panic("fleet sleeper called after terminal scheduler failure")
+	}
+	return sleeper.err
+}
 
 type fleetBlockingCache struct {
 	entered chan struct{}
@@ -101,7 +109,7 @@ func TestFleetLifecycleRejectsInvalidCallsAndSupportsStartupRetry(t *testing.T) 
 	if _, err := fleet.Start(context.Background()); err == nil {
 		t.Fatal("duplicate start succeeded")
 	}
-	<-sleeper.delays
+	waitForFleetEvent(t, sleeper.delays, "startup retry refresh schedule")
 	if err := fleet.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +165,7 @@ func TestFleetRefreshFrequencyWaiterCancellationAndSourceOrdering(t *testing.T) 
 		_, refreshErr := waitFleet.Refresh(context.Background())
 		firstDone <- refreshErr
 	}()
-	<-blocking.entered
+	waitForFleetEvent(t, blocking.entered, "coalesced refresh provider load")
 	waiterCtx, cancelWaiter := context.WithCancel(context.Background())
 	waiterDone := make(chan error, 1)
 	go func() {
@@ -172,14 +180,14 @@ func TestFleetRefreshFrequencyWaiterCancellationAndSourceOrdering(t *testing.T) 
 		runtime.Gosched()
 	}
 	cancelWaiter()
-	if err := <-waiterDone; !errors.Is(err, context.Canceled) {
+	if err := waitForFleetEvent(t, waiterDone, "cancelled refresh waiter"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled waiter = %v", err)
 	}
 	if waitFleet.Status().RefreshWaiters != 0 {
 		t.Fatalf("cancelled waiter remained registered: %#v", waitFleet.Status())
 	}
 	close(blocking.release)
-	if err := <-firstDone; err != nil {
+	if err := waitForFleetEvent(t, firstDone, "leader refresh completion"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -235,8 +243,9 @@ func TestFleetInvalidationValidationAndStreamBound(t *testing.T) {
 func TestFleetInvalidJitterStopsBackgroundRefresher(t *testing.T) {
 	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
 	for name, jitter := range map[string]FleetJitter{
-		"error": invalidFleetJitter{err: errors.New("jitter failed")},
-		"bound": invalidFleetJitter{delay: 11 * time.Second},
+		"error":    invalidFleetJitter{err: errors.New("jitter failed")},
+		"negative": invalidFleetJitter{delay: -time.Nanosecond},
+		"bound":    invalidFleetJitter{delay: 11 * time.Second},
 	} {
 		t.Run(name, func(t *testing.T) {
 			loader := &fleetTestLoader{candidates: []SnapshotCandidate{{
@@ -245,6 +254,8 @@ func TestFleetInvalidJitterStopsBackgroundRefresher(t *testing.T) {
 			}}}
 			config := validFleetConfig(&fleetTestClock{now: now}, loader)
 			config.Jitter = jitter
+			sleeper := &errorFleetSleeper{err: errors.New("unexpected scheduler call")}
+			config.Sleeper = sleeper
 			fleet, err := NewFleet(config)
 			if err != nil {
 				t.Fatal(err)
@@ -262,6 +273,9 @@ func TestFleetInvalidJitterStopsBackgroundRefresher(t *testing.T) {
 			if fleet.Status().LastRefreshFailure != FleetFailureScheduler {
 				t.Fatalf("invalid jitter status = %#v", fleet.Status())
 			}
+			if calls := sleeper.calls.Load(); calls != 0 {
+				t.Fatalf("invalid jitter reached scheduler %d times", calls)
+			}
 			if err := fleet.Shutdown(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -275,7 +289,8 @@ func TestFleetSleeperFailureStopsBackgroundRefresherObservably(t *testing.T) {
 		Snapshot: fleetBooleanSnapshot(t, "tenant-a", "flag", true),
 		Revision: "42", Provenance: "provider", SourceTime: now,
 	}}})
-	config.Sleeper = errorFleetSleeper{err: errors.New("scheduler unavailable")}
+	sleeper := &errorFleetSleeper{err: errors.New("scheduler unavailable")}
+	config.Sleeper = sleeper
 	fleet, err := NewFleet(config)
 	if err != nil {
 		t.Fatal(err)
@@ -292,6 +307,9 @@ func TestFleetSleeperFailureStopsBackgroundRefresherObservably(t *testing.T) {
 	}
 	if status := fleet.Status(); status.LastRefreshFailure != FleetFailureScheduler {
 		t.Fatalf("sleeper failure status = %#v", status)
+	}
+	if calls := sleeper.calls.Load(); calls != 1 {
+		t.Fatalf("sleeper failure calls = %d, want 1", calls)
 	}
 	if err := fleet.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
@@ -318,13 +336,13 @@ func TestFleetBackgroundRefreshReportsSaturatedWaiters(t *testing.T) {
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	<-sleeper.entered
+	waitForFleetEvent(t, sleeper.entered, "background waiter refresh schedule")
 	first := make(chan error, 1)
 	go func() {
 		_, refreshErr := fleet.Refresh(context.Background())
 		first <- refreshErr
 	}()
-	<-loader.entered
+	waitForFleetEvent(t, loader.entered, "background waiter provider load")
 	waiter := make(chan error, 1)
 	go func() {
 		_, refreshErr := fleet.Refresh(context.Background())
@@ -347,10 +365,10 @@ func TestFleetBackgroundRefreshReportsSaturatedWaiters(t *testing.T) {
 	if err := fleet.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-first; !errors.Is(err, context.Canceled) {
+	if err := waitForFleetEvent(t, first, "physical refresh shutdown"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("physical refresh shutdown error = %v", err)
 	}
-	if err := <-waiter; !errors.Is(err, context.Canceled) {
+	if err := waitForFleetEvent(t, waiter, "coalesced refresh shutdown"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("coalesced refresh shutdown error = %v", err)
 	}
 }
@@ -373,7 +391,7 @@ func TestFleetShutdownJoinsBootstrapCacheWorkAndPreventsLateStart(t *testing.T) 
 		_, startErr := fleet.Start(context.Background())
 		startDone <- startErr
 	}()
-	<-cache.entered
+	waitForFleetEvent(t, cache.entered, "bootstrap cache store")
 	shutdownDone := make(chan error, 1)
 	go func() { shutdownDone <- fleet.Shutdown(context.Background()) }()
 	deadline := time.Now().Add(time.Second)
@@ -384,10 +402,10 @@ func TestFleetShutdownJoinsBootstrapCacheWorkAndPreventsLateStart(t *testing.T) 
 		runtime.Gosched()
 	}
 	close(cache.release)
-	if err := <-startDone; !errors.Is(err, ErrFleetStopped) {
+	if err := waitForFleetEvent(t, startDone, "start racing shutdown"); !errors.Is(err, ErrFleetStopped) {
 		t.Fatalf("start racing shutdown = %v", err)
 	}
-	if err := <-shutdownDone; err != nil {
+	if err := waitForFleetEvent(t, shutdownDone, "bootstrap shutdown completion"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fleet.activate(loader.candidates[0], true); !errors.Is(err, ErrFleetStopped) {
@@ -418,14 +436,14 @@ func TestFleetBootstrapConcurrencyIsBoundedByLoadSlotsAndCallerDeadline(t *testi
 		_, bootstrapErr := fleet.Bootstrap(context.Background())
 		firstDone <- bootstrapErr
 	}()
-	<-loader.entered
+	waitForFleetEvent(t, loader.entered, "bounded bootstrap provider load")
 	deadline, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := fleet.Bootstrap(deadline); !errors.Is(err, context.Canceled) {
 		t.Fatalf("bounded concurrent bootstrap = %v", err)
 	}
 	close(loader.release)
-	if err := <-firstDone; err != nil {
+	if err := waitForFleetEvent(t, firstDone, "bounded bootstrap completion"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -451,7 +469,7 @@ func TestFleetPeriodicRefreshFailureIsObservableAndDegradesStaleState(t *testing
 	if _, err := fleet.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	<-sleeper.entered
+	waitForFleetEvent(t, sleeper.entered, "degraded refresh schedule")
 	clock.Set(now.Add(config.FreshFor + time.Nanosecond))
 	close(sleeper.release)
 	deadline := time.Now().Add(time.Second)
@@ -523,7 +541,12 @@ func TestFleetOperationalCountersSaturateInsteadOfWrapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	fleet.providerLoads.Store(math.MaxUint64)
-	if _, err := fleet.Refresh(context.Background()); err != nil {
+	refreshDone := make(chan error, 1)
+	go func() {
+		_, err := fleet.Refresh(context.Background())
+		refreshDone <- err
+	}()
+	if err := waitForFleetEvent(t, refreshDone, "saturated provider counter refresh"); err != nil {
 		t.Fatal(err)
 	}
 	fleet.mu.Lock()
