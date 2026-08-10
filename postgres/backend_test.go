@@ -17,6 +17,21 @@ func (conflictDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, erro
 	return pgconn.NewCommandTag("UPDATE 0"), nil
 }
 
+type statementDB struct {
+	wantStatement string
+	wantArguments int
+}
+
+func (db statementDB) Exec(_ context.Context, statement string, arguments ...any) (pgconn.CommandTag, error) {
+	if !strings.Contains(statement, db.wantStatement) || len(arguments) != db.wantArguments {
+		return pgconn.CommandTag{}, errors.New("unexpected compare-and-swap statement")
+	}
+
+	return pgconn.NewCommandTag("UPDATE 1"), nil
+}
+
+func (statementDB) QueryRow(context.Context, string, ...any) pgx.Row { return nil }
+
 type stubRow struct {
 	values []any
 	err    error
@@ -99,6 +114,10 @@ func TestBackendCoversLifecycleAndFailureMapping(t *testing.T) {
 	if health := failing.Health(ctx); health.Healthy || health.Code != "postgres_unavailable" {
 		t.Fatalf("Health(failure) = %#v", health)
 	}
+	wrongProbe := NewBackend(stubDB{row: stubRow{values: []any{2}}})
+	if health := wrongProbe.Health(ctx); health.Healthy || health.Code != "postgres_unavailable" {
+		t.Fatalf("Health(wrong probe value) = %#v", health)
+	}
 
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
@@ -127,5 +146,30 @@ func TestBackendMapsFailedCompareAndSwapToStorageConflict(t *testing.T) {
 	}
 	if !strings.Contains(Schema(), "feature_flag_tenant_state") {
 		t.Fatal("Schema() does not declare tenant state table")
+	}
+}
+
+func TestBackendRoutesCreateAndUpdateCompareAndSwapStatements(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		expectedRevision uint64
+		statement        string
+		arguments        int
+	}{
+		"create": {expectedRevision: 0, statement: "INSERT INTO", arguments: 2},
+		"update": {expectedRevision: 7, statement: "UPDATE", arguments: 3},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewBackend(statementDB{
+				wantStatement: test.statement,
+				wantArguments: test.arguments,
+			})
+			if err := backend.CompareAndSwap(t.Context(), "tenant-a", test.expectedRevision, []byte(`{}`)); err != nil {
+				t.Fatalf("CompareAndSwap() error = %v", err)
+			}
+		})
 	}
 }

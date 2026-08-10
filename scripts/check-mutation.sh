@@ -37,6 +37,7 @@ run_mutant stage_due staged.go '!change.ApplyAt.After(now)' 'change.ApplyAt.Afte
 run_mutant group_precedence evaluate.go 'for _, groupKey := range definition.Groups {' 'for _, groupKey := range []string{} {' 'TestGroupStrategiesTakePrecedenceOverFeatureStrategies'
 run_mutant strategy_precedence evaluate.go 'for _, strategy := range definition.Strategies {' 'for index := len(definition.Strategies) - 1; index >= 0; index-- { strategy := definition.Strategies[index]' 'TestFeatureStrategiesUseFirstMatchPrecedence'
 run_mutant default_reason evaluate.go 'return defaultResult(definition, ReasonDefault, nil)' 'return defaultResult(definition, ReasonRollout, nil)' 'TestEvaluationCoversStrategyErrorsDefaultsAndTypeFailures'
+run_mutant cache_eviction_time_filter cache.go 'if entry.fetched.Equal(oldestTime) &&' 'if entry.fetched.Equal(oldestTime) ||' 'TestCachedProviderEvictionIsIndependentOfMapIterationOrder'
 run_mutant fleet_stale_refresh fleet.go 'fleet.activate(candidate, false)' 'fleet.activate(candidate, true)' 'TestFleetRefreshRejectsStaleReplacementAndKeepsLastKnownGood'
 run_mutant fleet_provider_load_limit fleet.go 'calls.Add(1) > uint64(fleet.config.MaxProviderLoads)' 'calls.Add(1) >= uint64(fleet.config.MaxProviderLoads)' 'TestFleetExecutorCannotExceedProviderLoadBudget'
 run_mutant fleet_waiter_limit fleet.go 'fleet.waiters >= fleet.config.MaxWaiters' 'fleet.waiters > fleet.config.MaxWaiters' 'TestFleetRefreshCoalescesProviderLoadAndBoundsWaiters'
@@ -120,7 +121,7 @@ run_mutant fleet_negative_jitter_inversion fleet.go 'cmp.Compare(jitter, time.Du
 run_mutant fleet_negative_jitter_arithmetic_base fleet.go 'cmp.Compare(jitter, time.Duration(0)) == -1 ||' 'cmp.Compare(jitter, time.Duration(0)) == 0 ||' 'TestFleetInvalidJitterStopsBackgroundRefresher'
 run_mutant fleet_jitter_upper_bound fleet.go 'cmp.Compare(jitter, fleet.config.MaxRefreshJitter) == 1 {' 'cmp.Compare(jitter, fleet.config.MaxRefreshJitter) != 1 {' 'TestFleetInvalidJitterStopsBackgroundRefresher'
 run_mutant fleet_sleeper_terminal_error fleet.go 'if err := fleet.config.Sleeper.Sleep(ctx, fleet.config.RefreshInterval+jitter); err != nil {' 'if err := fleet.config.Sleeper.Sleep(ctx, fleet.config.RefreshInterval+jitter); err == nil {' 'TestFleetSleeperFailureStopsBackgroundRefresherObservably'
-run_mutant fleet_counter_saturation_loop fleet.go 'current == math.MaxUint64 || counter.CompareAndSwap(current, current+1)' 'current == math.MaxUint64 && counter.CompareAndSwap(current, current+1)' 'TestFleetOperationalCountersSaturateInsteadOfWrapping'
+run_mutant fleet_counter_saturation_guard fleet.go 'current == math.MaxUint64 {' 'current != math.MaxUint64 {' 'TestFleetOperationalCountersSaturateInsteadOfWrapping'
 run_mutant fleet_watcher_source_failure fleet.go 'if err != nil {
 			if ctx.Err() == nil {
 				fleet.recordWatcherFailure(FleetFailureWatcher)' 'if err != nil {
@@ -134,4 +135,4 @@ run_mutant fleet_watcher_terminal_error fleet.go 'fleet.recordWatcherFailure(Fle
 			}
 			continue' 'TestFleetWatcherFailureIsObservableWithoutProviderMisclassification'
 
-echo 'mutation score: 69/69 killed (100.0%)'
+echo 'mutation score: 70/70 killed (100.0%)'

@@ -272,13 +272,22 @@ func (provider *CachedProvider) invalidateOnSuccess(tenant string, err error) {
 }
 
 func (provider *CachedProvider) evictOldestLocked() {
-	var oldestTenant string
 	var oldestTime time.Time
-	for tenant, entry := range provider.entries {
-		if oldestTenant == "" || entry.fetched.Before(oldestTime) ||
-			(entry.fetched.Equal(oldestTime) && strings.Compare(tenant, oldestTenant) == -1) {
-			oldestTenant = tenant
+	oldestFound := false
+	for _, entry := range provider.entries {
+		if !oldestFound || entry.fetched.Before(oldestTime) {
 			oldestTime = entry.fetched
+			oldestFound = true
+		}
+	}
+
+	var oldestTenant string
+	tenantFound := false
+	for tenant, entry := range provider.entries {
+		if entry.fetched.Equal(oldestTime) &&
+			(!tenantFound || strings.Compare(tenant, oldestTenant) == -1) {
+			oldestTenant = tenant
+			tenantFound = true
 		}
 	}
 	delete(provider.entries, oldestTenant)

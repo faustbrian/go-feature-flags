@@ -1256,7 +1256,10 @@ func (fleet *Fleet) now() time.Time {
 func incrementSaturating(counter *atomic.Uint64) {
 	for {
 		current := counter.Load()
-		if current == math.MaxUint64 || counter.CompareAndSwap(current, current+1) {
+		if current == math.MaxUint64 {
+			return
+		}
+		if counter.CompareAndSwap(current, current+1) {
 			return
 		}
 	}

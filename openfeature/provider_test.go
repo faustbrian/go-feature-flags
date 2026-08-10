@@ -225,6 +225,43 @@ func TestProviderRejectsInvalidContextAndUnhealthyInitialization(t *testing.T) {
 	}
 }
 
+func TestProviderMapsReservedContextOnlyToDedicatedFields(t *testing.T) {
+	t.Parallel()
+
+	evaluationTime := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	provider := &Provider{tenant: "tenant-a"}
+	contextValue, err := provider.mapContext(of.FlattenedContext{
+		of.TargetingKey: "subject-a",
+		"tenant":        "tenant-a",
+		"environment":   "production",
+		"time":          evaluationTime,
+		"plan":          "enterprise",
+	})
+	if err != nil {
+		t.Fatalf("mapContext() error = %v", err)
+	}
+	if contextValue.Subject != "subject-a" || contextValue.Tenant != "tenant-a" ||
+		contextValue.Environment != "production" || !contextValue.Time.Equal(evaluationTime) {
+		t.Fatalf("mapContext() reserved fields = %#v", contextValue)
+	}
+	for _, key := range []string{string(of.TargetingKey), "tenant", "environment", "time"} {
+		if _, exists := contextValue.Facts[key]; exists {
+			t.Fatalf("mapContext() included reserved fact %q", key)
+		}
+		if _, exists := contextValue.Attributes[key]; exists {
+			t.Fatalf("mapContext() included reserved attribute %q", key)
+		}
+	}
+	if fact, exists := contextValue.Facts["plan"]; !exists {
+		t.Fatal("mapContext() omitted ordinary fact plan")
+	} else if value, ok := fact.String(); !ok || value != "enterprise" {
+		t.Fatalf("mapContext() plan fact = (%q, %t)", value, ok)
+	}
+	if contextValue.Attributes["plan"] != "enterprise" {
+		t.Fatalf("mapContext() plan attribute = %q", contextValue.Attributes["plan"])
+	}
+}
+
 func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	t.Parallel()
 
@@ -244,6 +281,23 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	}
 	if _, err := mapFact(uint(math.MaxUint64)); strconv.IntSize == 64 && err == nil {
 		t.Fatal("mapFact(max uint) succeeded")
+	}
+	maximumSigned := uint64(math.MaxInt64)
+	if strconv.IntSize == 64 {
+		fact, err := mapFact(uint(maximumSigned))
+		if err != nil {
+			t.Fatalf("mapFact(max int64 as uint) error = %v", err)
+		}
+		if value, ok := fact.Integer(); !ok || value != math.MaxInt64 {
+			t.Fatalf("mapFact(max int64 as uint) = (%d, %t)", value, ok)
+		}
+	}
+	fact, err := mapFact(maximumSigned)
+	if err != nil {
+		t.Fatalf("mapFact(max int64 as uint64) error = %v", err)
+	}
+	if value, ok := fact.Integer(); !ok || value != math.MaxInt64 {
+		t.Fatalf("mapFact(max int64 as uint64) = (%d, %t)", value, ok)
 	}
 	for reason, want := range map[featureflags.Reason]of.Reason{
 		featureflags.ReasonDefault:          of.DefaultReason,
@@ -271,6 +325,16 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	detail := mapDetail("enabled", featureflags.ReasonRollout, "rollout", math.MaxUint64)
 	if detail.FlagMetadata["version"] != strconv.FormatUint(math.MaxUint64, 10) {
 		t.Fatalf("mapDetail(max version) = %#v", detail.FlagMetadata)
+	}
+	if detail.FlagMetadata["matchedStrategy"] != "rollout" {
+		t.Fatalf("mapDetail(strategy) = %#v", detail.FlagMetadata)
+	}
+	boundaryDetail := mapDetail("enabled", featureflags.ReasonDefault, "", math.MaxInt64)
+	if version, ok := boundaryDetail.FlagMetadata["version"].(int64); !ok || version != math.MaxInt64 {
+		t.Fatalf("mapDetail(max int64 version) = %#v", boundaryDetail.FlagMetadata)
+	}
+	if _, exists := boundaryDetail.FlagMetadata["matchedStrategy"]; exists {
+		t.Fatalf("mapDetail(empty strategy) = %#v", boundaryDetail.FlagMetadata)
 	}
 }
 

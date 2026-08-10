@@ -54,6 +54,39 @@ func TestCacheConfigurationAndEvictionBoundaries(t *testing.T) {
 	}
 }
 
+func TestCachedProviderEvictionIsIndependentOfMapIterationOrder(t *testing.T) {
+	t.Parallel()
+
+	oldest := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	for range 256 {
+		cached := &CachedProvider{entries: map[string]cachedSnapshot{
+			"tenant-a": {fetched: oldest.Add(2 * time.Minute)},
+			"tenant-m": {fetched: oldest.Add(time.Minute)},
+			"tenant-z": {fetched: oldest},
+		}}
+		cached.evictOldestLocked()
+		if _, exists := cached.entries["tenant-z"]; exists {
+			t.Fatalf("evictOldestLocked() retained the oldest entry: %#v", cached.entries)
+		}
+		if len(cached.entries) != 2 {
+			t.Fatalf("evictOldestLocked() entries = %#v", cached.entries)
+		}
+
+		cached.entries = map[string]cachedSnapshot{
+			"tenant-a": {fetched: oldest},
+			"tenant-m": {fetched: oldest},
+			"tenant-z": {fetched: oldest},
+		}
+		cached.evictOldestLocked()
+		if _, exists := cached.entries["tenant-a"]; exists {
+			t.Fatalf("evictOldestLocked() retained lexical tie-break winner: %#v", cached.entries)
+		}
+		if len(cached.entries) != 2 {
+			t.Fatalf("evictOldestLocked() tied entries = %#v", cached.entries)
+		}
+	}
+}
+
 func TestCachedProviderUpdateAndAppliedImportInvalidateSnapshots(t *testing.T) {
 	t.Parallel()
 
