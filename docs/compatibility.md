@@ -1,6 +1,6 @@
 # Compatibility
 
-The module requires Go 1.26.5. Public API follows semantic versioning once a
+The module requires Go 1.26.6. Public API follows semantic versioning once a
 stable release is published. Export and durable tenant documents have separate
 explicit format versions; unsupported versions fail closed.
 

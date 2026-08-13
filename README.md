@@ -99,7 +99,7 @@ FEATURE_FLAGS_VALKEY_ADDRESS='127.0.0.1:6379' \
 make integration
 ```
 
-The minimum toolchain is Go 1.26.5.
+The minimum toolchain is Go 1.26.6.
 
 ## License
 
