@@ -9,6 +9,11 @@ Versioning after its first stable release.
 
 - Link the package README to the repository-wide Golib documentation portal.
 
+### Security
+
+- Upgrade `golang.org/x/text` to v0.41.0 and `golang.org/x/sys` to v0.47.0 so
+  the dependency graph no longer contains GO-2026-5970 or GO-2026-5024.
+
 ### Compatibility
 
 - Added a pinned module export baseline so incompatible public API changes
