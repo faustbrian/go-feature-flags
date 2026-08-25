@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	featureflags "github.com/faustbrian/golib/pkg/feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags"
 )
 
 // Factory returns an isolated provider for one conformance test.

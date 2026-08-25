@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	featureflags "github.com/faustbrian/golib/pkg/feature-flags"
-	"github.com/faustbrian/golib/pkg/feature-flags/featureflagstest"
-	featurevalkey "github.com/faustbrian/golib/pkg/feature-flags/valkey"
+	featureflags "github.com/faustbrian/go-feature-flags"
+	"github.com/faustbrian/go-feature-flags/featureflagstest"
+	featurevalkey "github.com/faustbrian/go-feature-flags/valkey"
 	valkeygo "github.com/valkey-io/valkey-go"
 )
 

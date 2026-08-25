@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	featureflags "github.com/faustbrian/golib/pkg/feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags"
 	of "github.com/open-feature/go-sdk/openfeature"
 )
 

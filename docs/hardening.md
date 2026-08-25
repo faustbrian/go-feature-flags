@@ -29,7 +29,7 @@ the complete digest and bucket, not only an implementation-specific result. It
 includes UTF-8, empty input, tenant separation, and length-framing ambiguity.
 
 From the repository root, the release proof is
-`make check MODULES=pkg/feature-flags`. It runs the canonical gate list,
+`make check MODULES=.`. It runs the canonical gate list,
 including exact coverage and exhaustive mutation, race, fuzz, provider
 interoperability, API, documentation, benchmark, vulnerability, secret,
 license, and SBOM checks. Package-local `make check-all` is a faster source

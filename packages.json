@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "repository": "github.com/faustbrian/go-feature-flags",
+  "packages": [
+    {
+      "module_directory": ".",
+      "directory": ".",
+      "name": "featureflags",
+      "import_path": "github.com/faustbrian/go-feature-flags",
+      "kind": "public",
+      "production": true,
+      "executable": true,
+      "coverage_required": true,
+      "build_required": true,
+      "build_tags": []
+    },
+    {
+      "module_directory": ".",
+      "directory": "featureflagstest",
+      "name": "featureflagstest",
+      "import_path": "github.com/faustbrian/go-feature-flags/featureflagstest",
+      "kind": "test support",
+      "production": false,
+      "executable": true,
+      "coverage_required": false,
+      "build_required": true,
+      "build_tags": []
+    },
+    {
+      "module_directory": ".",
+      "directory": "openfeature",
+      "name": "openfeature",
+      "import_path": "github.com/faustbrian/go-feature-flags/openfeature",
+      "kind": "public",
+      "production": true,
+      "executable": true,
+      "coverage_required": true,
+      "build_required": true,
+      "build_tags": []
+    },
+    {
+      "module_directory": ".",
+      "directory": "postgres",
+      "name": "postgres",
+      "import_path": "github.com/faustbrian/go-feature-flags/postgres",
+      "kind": "public",
+      "production": true,
+      "executable": true,
+      "coverage_required": true,
+      "build_required": true,
+      "build_tags": []
+    },
+    {
+      "module_directory": ".",
+      "directory": "valkey",
+      "name": "valkey",
+      "import_path": "github.com/faustbrian/go-feature-flags/valkey",
+      "kind": "public",
+      "production": true,
+      "executable": true,
+      "coverage_required": true,
+      "build_required": true,
+      "build_tags": []
+    }
+  ]
+}

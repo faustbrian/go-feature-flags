@@ -1,4 +1,4 @@
-module github.com/faustbrian/golib/pkg/feature-flags
+module github.com/faustbrian/go-feature-flags
 
 go 1.26.6
 

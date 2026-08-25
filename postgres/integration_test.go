@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	featureflags "github.com/faustbrian/golib/pkg/feature-flags"
-	"github.com/faustbrian/golib/pkg/feature-flags/featureflagstest"
-	featurepostgres "github.com/faustbrian/golib/pkg/feature-flags/postgres"
+	featureflags "github.com/faustbrian/go-feature-flags"
+	"github.com/faustbrian/go-feature-flags/featureflagstest"
+	featurepostgres "github.com/faustbrian/go-feature-flags/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

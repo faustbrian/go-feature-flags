@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	featureflags "github.com/faustbrian/golib/pkg/feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
