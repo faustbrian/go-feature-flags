@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/open-feature/go-sdk v1.17.2
-	github.com/valkey-io/valkey-go v1.0.76
+	github.com/valkey-io/valkey-go v1.0.77
 	go.uber.org/goleak v1.3.0
 )
 
