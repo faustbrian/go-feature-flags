@@ -5,6 +5,8 @@ Versioning after its first stable release.
 
 ## Unreleased
 
+## 1.0.0 - 2026-08-25
+
 ### Compatibility
 
 - Regenerate the exported API baseline with the repository's Go 1.26
@@ -26,8 +28,6 @@ Versioning after its first stable release.
 - Harden standalone documentation validation with deterministic spelling and
   link checks, package-specific documentation gates, and repository-local
   contributor guidance.
-
-## 1.0.0 - 2026-08-25
 
 ### Changed
 
