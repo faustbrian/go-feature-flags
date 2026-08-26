@@ -80,46 +80,6 @@
       "package": "valkey",
       "replacement_gate_input_digest": "23c59c5a6f3a0a78a0bccc73dffb6d0acb3da2ec939a2995a2c6adb4f19bd997",
       "report_sha256": "4564b2905b77b36c6affbf437972a86f1c02e7d59619629737ccca0c553b7d1f"
-    },
-    {
-      "module": ".",
-      "package": ".",
-      "execution_revision": "dd07cf92586a4d0459f8692f26e2a9aac70552f1",
-      "gate_input_digest": "b322e7a559e2725037932dddcd43284f1ff87802150f5835c862baa6f819deca",
-      "replacement_gate_input_digest": "2c651317dca9d6618315091f10e0b39f7195bda38308829d6cb13feb232f1a51",
-      "gremlins_version": "v0.6.0",
-      "gremlins_verifier_sha256": "9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
-      "report_sha256": "fb3eb26ccdbcb5c96d616b180c7882b291cf86e3149737230275ef07d1110cc6"
-    },
-    {
-      "module": ".",
-      "package": "openfeature",
-      "execution_revision": "dd07cf92586a4d0459f8692f26e2a9aac70552f1",
-      "gate_input_digest": "f1ad97a5ba7221327f2646aff6139696a9a9e187cae6bd59969933862ecd62ba",
-      "replacement_gate_input_digest": "90a49b0d96a96240941e4fa2333077e41380d6f7cab84ea71408061eb3e9b4b5",
-      "gremlins_version": "v0.6.0",
-      "gremlins_verifier_sha256": "9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
-      "report_sha256": "535ed1e63f56e738d5eda85d7fe83315700e005fb91ab7c3fd92cb7f3e691911"
-    },
-    {
-      "module": ".",
-      "package": "postgres",
-      "execution_revision": "dd07cf92586a4d0459f8692f26e2a9aac70552f1",
-      "gate_input_digest": "7865aeccc4556fc79d28e9df9f35e394cc41eee2425791ea93101c03190d8a2f",
-      "replacement_gate_input_digest": "23438b48db5b392d80f1e50faa2667ec2bea785f56d3017046e5828779182ac2",
-      "gremlins_version": "v0.6.0",
-      "gremlins_verifier_sha256": "9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
-      "report_sha256": "43939d82c316adda386d3e13360caee86bb5dfdb8dabc0c2b2726ee407d2340a"
-    },
-    {
-      "module": ".",
-      "package": "valkey",
-      "execution_revision": "dd07cf92586a4d0459f8692f26e2a9aac70552f1",
-      "gate_input_digest": "63fd00cb133cbf4d77f7f40ebebbf1e89247565bf0dc760ffe0d3ebff8e21f12",
-      "replacement_gate_input_digest": "4d99a84c12406a1033ce0a7e409ea62aa956840a40f65571c79b906ef427472d",
-      "gremlins_version": "v0.6.0",
-      "gremlins_verifier_sha256": "9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
-      "report_sha256": "f19df884149d27e642a9137a5cf2546e23c8f2c39fef6f6ed0e5c6617ed7ba08"
     }
   ]
 }
