@@ -91,7 +91,7 @@ subject with stable length-delimited SHA-256 input.
 
 See [the native reference](docs/native-api.md),
 [provider operations](docs/providers.md), [OpenFeature mapping](docs/openfeature.md),
-[hardening evidence](docs/hardening.md), [security](SECURITY.md),
+[verification](docs/verification.md), [security](SECURITY.md),
 [fleet and Kubernetes operation](docs/fleet.md),
 [cookbook](docs/cookbook.md), and [FAQ](docs/faq.md).
 
@@ -114,8 +114,3 @@ The minimum toolchain is Go 1.26.6.
 ## License
 
 MIT.
-
-## Ecosystem
-
-Use the [Golib documentation portal](https://github.com/faustbrian/golib/blob/main/docs/index.md)
-to choose companion packages, supported stacks, recipes, and operations guidance.

@@ -1,4 +1,4 @@
-# Hardening evidence
+# Verification
 
 This matrix ties the release-blocking feature-flag risks to executable evidence.
 All commands run against the current source; integration and coverage require
