@@ -91,7 +91,7 @@ subject with stable length-delimited SHA-256 input.
 
 See [the native reference](docs/native-api.md),
 [provider operations](docs/providers.md), [OpenFeature mapping](docs/openfeature.md),
-[hardening evidence](docs/hardening.md), [security](SECURITY.md),
+[verification](docs/verification.md), [security](SECURITY.md),
 [fleet and Kubernetes operation](docs/fleet.md),
 [cookbook](docs/cookbook.md), and [FAQ](docs/faq.md).
 
@@ -101,21 +101,11 @@ See [the native reference](docs/native-api.md),
 make check
 ```
 
-Real backend conformance requires disposable PostgreSQL and Valkey instances:
-
-```sh
-FEATURE_FLAGS_POSTGRES_DSN='postgres://...' \
-FEATURE_FLAGS_VALKEY_ADDRESS='127.0.0.1:6379' \
-make integration
-```
+The shared `golib` tool starts disposable PostgreSQL and Valkey fixtures for
+the declared integration gates. Run `make check` from the repository root.
 
 The minimum toolchain is Go 1.26.6.
 
 ## License
 
 MIT.
-
-## Ecosystem
-
-Use the [Golib documentation portal](https://github.com/faustbrian/golib/blob/main/docs/index.md)
-to choose companion packages, supported stacks, recipes, and operations guidance.

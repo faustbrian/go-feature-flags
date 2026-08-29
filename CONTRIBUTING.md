@@ -17,6 +17,8 @@ fixture coverage, and interoperability evidence.
 New direct dependencies and dependency updates must follow the
 [dependency governance policy](AGENTS.md#dependencies-and-supply-chain). Package-local
 update bots are forbidden; the root policy owns every module and action update.
+The repository pins `go-library-tools` in `.golib.yaml` and the reusable CI
+workflow by commit SHA.
 
 Specification-backed changes must follow the
 [specification governance contract](AGENTS.md#design), update
@@ -45,8 +47,9 @@ Before submitting a repository-wide change:
 make ci
 ```
 
-The full scheduled and release gate is `make ci`. Report every unavailable or
-failing command; do not describe partial results as release-ready.
+The full scheduled and release gate is `make ci`. It includes the declared
+PostgreSQL and Valkey service fixtures. Report every unavailable or failing
+command; do not describe partial results as release-ready.
 
 ## Adding A Module
 

@@ -1,9 +1,21 @@
 # Changelog
 
-All notable changes will be documented here. The project follows Semantic
-Versioning after its first stable release.
+All notable changes are documented here. The project follows Semantic
+Versioning.
 
 ## Unreleased
+
+### Changed
+
+- Replace copied repository tooling with the pinned `go-library-tools` v1.0.4
+  contract while retaining package-owned policy and verification evidence.
+- Preserve the approved mutation checkpoints under `.verification` for the
+  shared content-addressed evidence workflow.
+
+### Documentation
+
+- Replace archived monorepo and hardening terminology with package-owned
+  documentation and verification guidance.
 
 ## 1.0.0 - 2026-08-25
 
@@ -35,7 +47,7 @@ Versioning after its first stable release.
 
 ### Documentation
 
-- Link the package README to the repository-wide Golib documentation portal.
+- Link the package README to package-owned documentation.
 
 ### Security
 
