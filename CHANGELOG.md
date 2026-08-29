@@ -5,6 +5,13 @@ Versioning.
 
 ## Unreleased
 
+### Changed
+
+- Replace copied repository tooling with the pinned `go-library-tools` v1.0.4
+  contract while retaining package-owned policy and verification evidence.
+- Preserve the approved mutation checkpoints under `.verification` for the
+  shared content-addressed evidence workflow.
+
 ### Documentation
 
 - Replace archived monorepo and hardening terminology with package-owned

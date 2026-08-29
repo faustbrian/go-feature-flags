@@ -101,13 +101,8 @@ See [the native reference](docs/native-api.md),
 make check
 ```
 
-Real backend conformance requires disposable PostgreSQL and Valkey instances:
-
-```sh
-FEATURE_FLAGS_POSTGRES_DSN='postgres://...' \
-FEATURE_FLAGS_VALKEY_ADDRESS='127.0.0.1:6379' \
-make integration
-```
+The shared `golib` tool starts disposable PostgreSQL and Valkey fixtures for
+the declared integration gates. Run `make check` from the repository root.
 
 The minimum toolchain is Go 1.26.6.
 

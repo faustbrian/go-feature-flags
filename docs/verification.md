@@ -1,8 +1,9 @@
 # Verification
 
 This matrix ties the release-blocking feature-flag risks to executable evidence.
-All commands run against the current source; integration and coverage require
-the PostgreSQL and Valkey environment variables documented in the README.
+All commands run against the current source; the shared `golib` workflow
+provisions the declared PostgreSQL and Valkey fixtures for integration and
+coverage gates.
 
 | Risk | Executable evidence |
 |---|---|
@@ -28,12 +29,11 @@ The language-neutral bucketing fixture at `testdata/bucketing-v1.json` freezes
 the complete digest and bucket, not only an implementation-specific result. It
 includes UTF-8, empty input, tenant separation, and length-framing ambiguity.
 
-From the repository root, the release proof is
-`make check MODULES=.`. It runs the canonical gate list,
-including exact coverage and exhaustive mutation, race, fuzz, provider
-interoperability, API, documentation, benchmark, vulnerability, secret,
-license, and SBOM checks. Package-local `make check-all` is a faster source
-gate and does not replace the repository release or provider gates.
+From the repository root, `make ci` runs the repository contract and the
+canonical gate list through the pinned `go-library-tools` release, including
+exact coverage and exhaustive mutation, race, fuzz, provider, API,
+documentation, benchmark, vulnerability, secret, license, and SBOM checks.
+The declared PostgreSQL and Valkey fixtures are started by the shared tool.
 
 The canonical benchmark gate runs equivalent in-memory behavior with
 `-benchmem` and a fixed 100 ms minimum sample per benchmark. It publishes
