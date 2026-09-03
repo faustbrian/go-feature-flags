@@ -7,8 +7,11 @@ Versioning.
 
 ### Changed
 
-- Replace copied repository tooling with the pinned `go-library-tools` v1.3.0
-  contract while retaining package-owned policy and verification evidence.
+- Adopt the checksum-verified `go-library-tools` v1.4.0 CLI and immutable W14
+  reusable workflow, including strict online specification validation, without
+  changing the feature-flag API or runtime behavior.
+- Replace copied repository tooling with the checksum-pinned shared contract
+  while retaining package-owned policy and verification evidence.
 - Publish schema-v2 cohesion metadata and a repository-local cohesion gate
   through the immutable shared workflow.
 - Preserve the approved mutation checkpoints under `.verification` for the
@@ -16,10 +19,11 @@ Versioning.
 
 ### Documentation
 
+- Link ecosystem and Persistence and durability family guidance to the
+  immutable v1.4.0 documentation release and correct the stable-release
+  compatibility statement.
 - Replace archived monorepo and hardening terminology with package-owned
   documentation and verification guidance.
-- Link the module to the versioned Golib ecosystem design language and correct
-  the stable-release compatibility statement.
 
 ## 1.0.0 - 2026-08-25
 
