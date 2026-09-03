@@ -1,8 +1,8 @@
 # Compatibility
 
-The module requires Go 1.26.6. Public API follows semantic versioning once a
-stable release is published. Export and durable tenant documents have separate
-explicit format versions; unsupported versions fail closed.
+The module requires Go 1.26.6. The published v1 module follows semantic
+versioning. Export and durable tenant documents have separate explicit format
+versions; unsupported versions fail closed.
 
 PostgreSQL uses pgx v5 and requires a server supporting `INSERT ... ON
 CONFLICT`, row locking, and `bytea`. Valkey uses RESP3 through valkey-go and Lua

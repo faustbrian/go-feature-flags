@@ -7,8 +7,10 @@ Versioning.
 
 ### Changed
 
-- Replace copied repository tooling with the pinned `go-library-tools` v1.0.13
+- Replace copied repository tooling with the pinned `go-library-tools` v1.3.0
   contract while retaining package-owned policy and verification evidence.
+- Publish schema-v2 cohesion metadata and a repository-local cohesion gate
+  through the immutable shared workflow.
 - Preserve the approved mutation checkpoints under `.verification` for the
   shared content-addressed evidence workflow.
 
@@ -16,6 +18,8 @@ Versioning.
 
 - Replace archived monorepo and hardening terminology with package-owned
   documentation and verification guidance.
+- Link the module to the versioned Golib ecosystem design language and correct
+  the stable-release compatibility statement.
 
 ## 1.0.0 - 2026-08-25
 
