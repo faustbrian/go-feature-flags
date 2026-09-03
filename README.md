@@ -95,8 +95,8 @@ See [the native reference](docs/native-api.md),
 [fleet and Kubernetes operation](docs/fleet.md),
 [cookbook](docs/cookbook.md), and [FAQ](docs/faq.md).
 
-See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.3.0/docs/ecosystem/README.md)
-and [package-family selection guidance](https://github.com/faustbrian/go-library-tools/blob/v1.3.0/docs/ecosystem/design-language.md#package-families-and-selection)
+See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/README.md)
+and its [Persistence and durability family](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/design-language.md#package-families-and-selection)
 for the shared design language this module follows.
 
 ## Development
