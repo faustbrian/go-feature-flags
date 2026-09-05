@@ -19,6 +19,8 @@ Versioning.
 
 ### Documentation
 
+- Add the canonical module installation command and direct compatibility and
+  release-history navigation to the root README.
 - Link ecosystem and Persistence and durability family guidance to the
   immutable v1.4.0 documentation release and correct the stable-release
   compatibility statement.
