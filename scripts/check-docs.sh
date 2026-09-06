@@ -4,7 +4,7 @@ set -euo pipefail
 required=(
 	README.md CHANGELOG.md SECURITY.md LICENSE
 	docs/native-api.md docs/providers.md docs/openfeature.md docs/migration.md
-	docs/cookbook.md docs/faq.md docs/compatibility.md docs/hardening.md
+	docs/cookbook.md docs/faq.md docs/compatibility.md docs/verification.md
 	docs/fleet.md
 )
 for file in "${required[@]}"; do
@@ -34,4 +34,4 @@ for document in Path('.').rglob('*.md'):
             raise SystemExit(f'broken relative link in {document}: {target}')
 print('documentation links resolve')
 PY
-go test ./... -run '^Example'
+go test ./... -run '^Example' -count=1

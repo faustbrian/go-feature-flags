@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "repository": "github.com/faustbrian/go-feature-flags",
+  "module": ".",
+  "package": "postgres",
+  "gate": "mutation",
+  "input_digest": "sha256:98562e78dce5e530fd6d133697d455e784568338cf5f0f144aacd32a5e369cd4",
+  "verifier_digest": "sha256:9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
+  "result": "passed",
+  "report_digest": "sha256:8c5d4ff850737748bdf48f73bb122126be0d1376ebf9a362d076505045d56e3e",
+  "environment": {
+    "CGO_ENABLED": "1",
+    "GOARCH": "arm64",
+    "GOOS": "darwin",
+    "GOVERSION": "go1.26.6",
+    "gremlins_binary_sha256": "sha256:e05bf25d661b16ab96d6f2e17aed481d393930e0f24205cc341b010f887368a0"
+  },
+  "completed_at": "2026-09-06T10:49:42.910486Z"
+}
