@@ -14,6 +14,8 @@ Deterministic, tenant-safe feature management and rollout evaluation for Go.
 The native API supports richer policies than OpenFeature; the OpenFeature
 provider is an optional interoperability adapter.
 
+This module is a stable v1 library and supports Go 1.26.6 or later.
+
 ## Installation
 
 ```sh
@@ -22,55 +24,9 @@ go get github.com/faustbrian/go-feature-flags@v1
 
 ## Quick start
 
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-
-    featureflags "github.com/faustbrian/go-feature-flags"
-)
-
-func main() {
-    provider := featureflags.NewMemoryProvider(featureflags.DefaultLimits())
-    _, err := provider.Create(context.Background(), "tenant-a",
-        featureflags.Definition{
-            Key:       "checkout.redesign",
-            Type:      featureflags.TypeBoolean,
-            Default:   featureflags.BooleanValue(false),
-            Lifecycle: featureflags.LifecycleActive,
-            Variants: map[string]featureflags.Value{
-                "enabled": featureflags.BooleanValue(true),
-            },
-            Strategies: []featureflags.Strategy{
-                featureflags.PercentageStrategy{
-                    Name: "ten-percent", Variant: "enabled",
-                    Seed: "checkout-v1", Threshold: 10_000,
-                },
-            },
-        }, "deployment-controller")
-    if err != nil {
-        panic(err)
-    }
-
-    snapshot, err := provider.Snapshot(context.Background(), "tenant-a")
-    if err != nil {
-        panic(err)
-    }
-    detail, err := snapshot.Boolean("checkout.redesign", featureflags.Context{
-        Tenant: "tenant-a", Subject: "customer-123",
-    })
-    if err != nil {
-        panic(err)
-    }
-    fmt.Println(detail.Value, detail.Variant, detail.Reason)
-}
-```
-
-`Threshold` has five decimal digits of percentage precision. `10_000` is
-10%, and `100_000` is 100%. Assignment hashes the seed, feature, tenant, and
-subject with stable length-delimited SHA-256 input.
+See the [compiler-checked quick start](example_test.go) for a complete native
+provider example. Percentage rollout examples and threshold semantics are in
+the [cookbook](docs/cookbook.md).
 
 ## Packages
 
@@ -97,10 +53,12 @@ subject with stable length-delimited SHA-256 input.
 
 See [the native reference](docs/native-api.md),
 [provider operations](docs/providers.md), [OpenFeature mapping](docs/openfeature.md),
-[verification](docs/verification.md), [security](SECURITY.md),
+[verification](docs/verification.md),
 [fleet and Kubernetes operation](docs/fleet.md),
 [cookbook](docs/cookbook.md), [compatibility](docs/compatibility.md),
-[FAQ](docs/faq.md), and [release history](CHANGELOG.md).
+[migration guidance](docs/migration.md), [troubleshooting](docs/faq.md),
+[support](SUPPORT.md), [security policy](SECURITY.md), [license](LICENSE), and
+[release history](CHANGELOG.md).
 
 See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/README.md)
 and its [Persistence and durability family](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/design-language.md#package-families-and-selection)

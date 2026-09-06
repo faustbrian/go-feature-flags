@@ -19,6 +19,11 @@ Versioning.
 
 ### Documentation
 
+- State the stable-v1 and supported-Go contract, provide a compiler-checked
+  quick start, and expose migration, support, troubleshooting, security, and
+  license entry points.
+- Validate the current verification guide instead of the removed hardening
+  document in the documentation gate.
 - Add the canonical module installation command and direct compatibility and
   release-history navigation to the root README.
 - Link ecosystem and Persistence and durability family guidance to the

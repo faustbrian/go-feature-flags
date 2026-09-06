@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "repository": "github.com/faustbrian/go-feature-flags",
+  "module": ".",
+  "package": "valkey",
+  "gate": "mutation",
+  "input_digest": "sha256:7e861bdcd6fb646b38bfbec1b845757c6241f1afd43fa9da4dd13b3b45b72aa9",
+  "verifier_digest": "sha256:9a9499ff68a8dfd49a0be7995590297a8ee563a1aa226bfd8b9361dc53058108",
+  "result": "passed",
+  "report_digest": "sha256:5ecd93f2317afed9af517229b41402460e3f33f7fa0eba9875347a42ff5ad522",
+  "environment": {
+    "CGO_ENABLED": "1",
+    "GOARCH": "arm64",
+    "GOOS": "darwin",
+    "GOVERSION": "go1.26.6",
+    "gremlins_binary_sha256": "sha256:e05bf25d661b16ab96d6f2e17aed481d393930e0f24205cc341b010f887368a0"
+  },
+  "completed_at": "2026-09-06T10:49:56.74148Z"
+}
