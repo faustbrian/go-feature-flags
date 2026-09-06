@@ -14,6 +14,12 @@ Deterministic, tenant-safe feature management and rollout evaluation for Go.
 The native API supports richer policies than OpenFeature; the OpenFeature
 provider is an optional interoperability adapter.
 
+## Installation
+
+```sh
+go get github.com/faustbrian/go-feature-flags@v1
+```
+
 ## Quick start
 
 ```go
@@ -93,7 +99,8 @@ See [the native reference](docs/native-api.md),
 [provider operations](docs/providers.md), [OpenFeature mapping](docs/openfeature.md),
 [verification](docs/verification.md), [security](SECURITY.md),
 [fleet and Kubernetes operation](docs/fleet.md),
-[cookbook](docs/cookbook.md), and [FAQ](docs/faq.md).
+[cookbook](docs/cookbook.md), [compatibility](docs/compatibility.md),
+[FAQ](docs/faq.md), and [release history](CHANGELOG.md).
 
 See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/README.md)
 and its [Persistence and durability family](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/design-language.md#package-families-and-selection)
