@@ -7,14 +7,14 @@
 [![Documentation](https://img.shields.io/badge/docs-checked_in_CI-blue)](docs/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/faustbrian/go-feature-flags.svg)](https://pkg.go.dev/github.com/faustbrian/go-feature-flags)
 [![Release](https://img.shields.io/github/v/release/faustbrian/go-feature-flags?sort=semver)](https://github.com/faustbrian/go-feature-flags/releases)
-[![Go](https://img.shields.io/badge/go-1.26.6-00ADD8?logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.27.0-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Deterministic, tenant-safe feature management and rollout evaluation for Go.
 The native API supports richer policies than OpenFeature; the OpenFeature
 provider is an optional interoperability adapter.
 
-This module is a stable v1 library and supports Go 1.26.6 or later.
+This module is a stable v1 library and supports Go 1.27.0 or later.
 
 ## Installation
 
@@ -74,7 +74,7 @@ make cohesion
 The shared `golib` tool starts disposable PostgreSQL and Valkey fixtures for
 the declared integration gates. Run `make check` from the repository root.
 
-The minimum toolchain is Go 1.26.6.
+The minimum toolchain is Go 1.27.0.
 
 ## License
 

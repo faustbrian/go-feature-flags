@@ -1,6 +1,6 @@
 # Compatibility
 
-The module requires Go 1.26.6. The published v1 module follows semantic
+The module requires Go 1.27.0. The published v1 module follows semantic
 versioning. Export and durable tenant documents have separate explicit format
 versions; unsupported versions fail closed.
 

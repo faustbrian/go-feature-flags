@@ -6,7 +6,7 @@
     {
       "directory": ".",
       "module_path": "github.com/faustbrian/go-feature-flags",
-      "go_version": "1.26.6",
+      "go_version": "1.27.0",
       "packages": [
         {
           "module_directory": ".",
@@ -171,7 +171,7 @@
           "github.com/faustbrian/go-feature-flags/featureflagstest"
         ],
         "supported_go": {
-          "minimum": "1.26.6",
+          "minimum": "1.27.0",
           "tested": [
             "1.27.0"
           ]

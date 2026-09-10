@@ -7,6 +7,8 @@ Versioning.
 
 ### Changed
 
+- Require Go 1.27.0 across module, development, CI, and compatibility
+  metadata.
 - Adopt the checksum-verified `go-library-tools` v1.4.0 CLI and immutable W14
   reusable workflow, including strict online specification validation, without
   changing the feature-flag API or runtime behavior.
