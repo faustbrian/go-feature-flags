@@ -24,7 +24,7 @@ func (p *MemoryProvider) Cleanup(
 	tenant string,
 	options CleanupOptions,
 ) (CleanupReport, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return CleanupReport{}, err
 	}
 	if options.KeepAudit < 0 || options.KeepAudit > p.limits.MaxAuditEntries {

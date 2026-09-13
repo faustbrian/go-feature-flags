@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +59,17 @@ type lifecycleProvider struct {
 	health      featureflags.ProviderHealth
 	closed      bool
 	snapshotErr error
+	snapshots   int
+}
+
+type countingJSONMarshaler struct {
+	called *bool
+}
+
+func (marshaler countingJSONMarshaler) MarshalJSON() ([]byte, error) {
+	*marshaler.called = true
+
+	return []byte(`"value"`), nil
 }
 
 func (provider *lifecycleProvider) Health(context.Context) featureflags.ProviderHealth {
@@ -73,10 +85,94 @@ func (provider *lifecycleProvider) Snapshot(
 	ctx context.Context,
 	tenant string,
 ) (featureflags.Snapshot, error) {
+	provider.snapshots++
 	if provider.snapshotErr != nil {
 		return featureflags.Snapshot{}, provider.snapshotErr
 	}
 	return provider.Provider.Snapshot(ctx, tenant)
+}
+
+func TestProviderRejectsHostileContextBeforeNativeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	native := &lifecycleProvider{Provider: featureflags.NewMemoryProvider(featureflags.DefaultLimits())}
+	provider, err := New(native, "tenant-a", Options{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	deepValue := any(true)
+	for range featureflags.DefaultLimits().MaxEvaluationDepth + 1 {
+		deepValue = []any{deepValue}
+	}
+	cyclicValue := map[string]any{}
+	cyclicValue["self"] = cyclicValue
+	contexts := map[string]of.FlattenedContext{
+		"too many facts": func() of.FlattenedContext {
+			contextValue := make(of.FlattenedContext, featureflags.DefaultLimits().MaxFacts+1)
+			for index := range featureflags.DefaultLimits().MaxFacts + 1 {
+				contextValue["fact."+strconv.Itoa(index)] = true
+			}
+			return contextValue
+		}(),
+		"oversized key": {
+			string(make([]byte, featureflags.DefaultLimits().MaxContextKeyBytes+1)): true,
+		},
+		"oversized value": {
+			"plan": string(make([]byte, featureflags.DefaultLimits().MaxContextValueBytes+1)),
+		},
+		"oversized targeting key": {
+			of.TargetingKey: string(make([]byte, featureflags.DefaultLimits().MaxContextValueBytes+1)),
+		},
+		"invalid environment type": {"environment": 1},
+		"oversized structured value": {
+			"claims": json.RawMessage(`"` + string(make([]byte, featureflags.DefaultLimits().MaxStructuredBytes+1)) + `"`),
+		},
+		"excessive structured depth": {"claims": deepValue},
+		"cyclic structured value":    {"claims": cyclicValue},
+	}
+	for name, contextValue := range contexts {
+		t.Run(name, func(t *testing.T) {
+			detail := provider.BooleanEvaluation(t.Context(), "flag", true, contextValue)
+			if !detail.Value || detail.Error() == nil || detail.ResolutionDetail().ErrorCode != of.InvalidContextCode {
+				t.Fatalf("BooleanEvaluation() = %#v, want default with invalid-context error", detail)
+			}
+		})
+	}
+	if native.snapshots != 0 {
+		t.Fatalf("native provider received %d snapshot call(s) for hostile contexts", native.snapshots)
+	}
+}
+
+func TestProviderRejectsContextCardinalityBeforeInspectingEntries(t *testing.T) {
+	t.Parallel()
+
+	provider := &Provider{limits: featureflags.DefaultLimits()}
+	contextValue := make(of.FlattenedContext, provider.limits.MaxFacts+5)
+	for index := range provider.limits.MaxFacts + 5 {
+		key := strings.Repeat("k", provider.limits.MaxContextKeyBytes+1) + strconv.Itoa(index)
+		contextValue[key] = true
+	}
+
+	_, err := provider.mapContext(contextValue)
+	if err == nil || err.Error() != "context entries exceed configured bounds: evaluation context exceeds limit" {
+		t.Fatalf("mapContext() error = %v, want cardinality rejection before entry inspection", err)
+	}
+}
+
+func TestNewRejectsTypedNilNativeProvider(t *testing.T) {
+	t.Parallel()
+
+	var native *lifecycleProvider
+	if _, err := New(native, "tenant-a", Options{}); err == nil {
+		t.Fatal("New() accepted a typed-nil native provider")
+	}
+	if isNil(1) {
+		t.Fatal("isNil() classified a concrete scalar as nil")
+	}
+	if _, err := New(featureflags.NewMemoryProvider(featureflags.DefaultLimits()), strings.Repeat("t", featureflags.DefaultLimits().MaxKeyBytes+1), Options{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("New() oversized tenant error = %v, want ErrContextLimit", err)
+	}
 }
 
 func TestProviderExposesEveryCompatibleTypeAndLifecycle(t *testing.T) {
@@ -282,6 +378,20 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	if _, err := mapFact(uint(math.MaxUint64)); strconv.IntSize == 64 && err == nil {
 		t.Fatal("mapFact(max uint) succeeded")
 	}
+	for _, value := range []float64{math.NaN(), math.Inf(1)} {
+		if _, err := mapFact(value); !errors.Is(err, featureflags.ErrContextLimit) {
+			t.Fatalf("mapFact(%v) error = %v, want ErrContextLimit", value, err)
+		}
+	}
+	if _, err := mapFact(float32(math.Inf(-1))); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFact(float32 -Inf) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFact(json.RawMessage(`{`)); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFact(invalid raw JSON) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFact(make(chan int)); err == nil {
+		t.Fatal("mapFact(channel) succeeded")
+	}
 	maximumSigned := uint64(math.MaxInt64)
 	if strconv.IntSize == 64 {
 		fact, err := mapFact(uint(maximumSigned))
@@ -335,6 +445,56 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	}
 	if _, exists := boundaryDetail.FlagMetadata["matchedStrategy"]; exists {
 		t.Fatalf("mapDetail(empty strategy) = %#v", boundaryDetail.FlagMetadata)
+	}
+}
+
+func TestStructuredFactPreflightBoundsWorkBeforeEncoding(t *testing.T) {
+	t.Parallel()
+
+	limits := featureflags.DefaultLimits()
+	if err := validateStructuredInput("value", limits, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(string) error = %v", err)
+	}
+	limits.MaxStructuredBytes = 2
+	if err := validateStructuredInput(map[string]any{"oversized": true}, limits, 0, &structuredBudget{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("validateStructuredInput(bytes) error = %v, want ErrContextLimit", err)
+	}
+	limits.MaxStructuredBytes = 1
+	if err := validateStructuredInput([]any{true}, limits, 0, &structuredBudget{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("validateStructuredInput(nodes) error = %v, want ErrContextLimit", err)
+	}
+	limits.MaxStructuredBytes = 4
+	if _, err := mapFactWithLimits(struct{ Value string }{Value: "oversized"}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(encoded size) error = %v, want ErrContextLimit", err)
+	}
+
+	type namedMap map[string]any
+	cyclic := namedMap{}
+	cyclic["self"] = cyclic
+	limits = featureflags.DefaultLimits()
+	if _, err := mapFactWithLimits(cyclic, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(named cycle) error = %v, want ErrContextLimit", err)
+	}
+
+	called := false
+	if _, err := mapFactWithLimits(map[string]any{
+		"custom": countingJSONMarshaler{called: &called},
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(custom marshaler) error = %v, want ErrContextLimit", err)
+	}
+	if called {
+		t.Fatal("mapFactWithLimits invoked a custom JSON marshaler during bounded preflight")
+	}
+
+	if _, err := mapFactWithLimits(map[string]any{
+		"raw": json.RawMessage(`{`),
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(nested invalid raw JSON) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFactWithLimits(map[string]any{
+		"raw": json.RawMessage(`"safe"`),
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(nested raw JSON) error = %v, want ErrContextLimit", err)
 	}
 }
 
