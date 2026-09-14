@@ -625,6 +625,9 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	if !implementsCustomEncoding(reflect.TypeOf(pointerTextMarshaler{})) {
 		t.Fatal("pointer-receiver text marshaler was not detected")
 	}
+	if !implementsCustomEncoding(reflect.TypeOf((*pointerJSONMarshaler)(nil))) {
+		t.Fatal("JSON marshaler pointer type was not detected")
+	}
 	if !implementsCustomEncoding(reflect.TypeOf(countingJSONMarshaler{})) {
 		t.Fatal("value-receiver JSON marshaler was not detected")
 	}

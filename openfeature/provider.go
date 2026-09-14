@@ -563,7 +563,7 @@ func enterStructuredValue(value reflect.Value, budget *structuredBudget) (func()
 }
 
 func addStructuredString(value string, limits featureflags.Limits, budget *structuredBudget) error {
-	if len(value) > limits.MaxStructuredBytes {
+	if len(value) > limits.MaxStructuredBytes-2 {
 		return fmt.Errorf("structured fact exceeds %d input bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
 	}
 	encoded, _ := json.Marshal(value)
