@@ -48,7 +48,7 @@ type pendingAudit struct {
 // ExportDocument returns a deterministic document for one tenant's active
 // feature and group state.
 func (p *MemoryProvider) ExportDocument(ctx context.Context, tenant string) ([]byte, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err
 	}
 	p.mu.RLock()
@@ -72,7 +72,7 @@ func (p *MemoryProvider) ImportDocument(
 	options ImportOptions,
 	actor string,
 ) (ImportReport, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return ImportReport{}, err
 	}
 	if options.ConflictPolicy == "" {

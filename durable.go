@@ -206,7 +206,7 @@ type loadedRevision struct{ revision uint64 }
 
 func durableMutate[T any](provider *DurableProvider, ctx context.Context, tenant string, mutation func(*MemoryProvider) (T, error)) (T, error) {
 	var zero T
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, provider.limits.MaxKeyBytes); err != nil {
 		return zero, err
 	}
 	for attempt := 0; attempt <= provider.limits.MaxStorageRetries; attempt++ {
@@ -234,7 +234,7 @@ func durableMutate[T any](provider *DurableProvider, ctx context.Context, tenant
 }
 
 func (p *DurableProvider) load(ctx context.Context, tenant string) (*MemoryProvider, loadedRevision, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, loadedRevision{}, err
 	}
 	data, revision, exists, err := p.backend.Load(ctx, tenant)

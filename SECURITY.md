@@ -14,6 +14,9 @@ backends, least-privilege credentials, and application-owned audit actor IDs.
 Never place secrets or unnecessary personal information in evaluation context,
 metadata, diagnostics, cache keys, metrics, or logs.
 
+The repository-specific threat model, enforced boundaries, and accepted risks
+are documented in [docs/security.md](docs/security.md).
+
 The package has no hidden background worker, global mutable client, or context
 scraping. `Fleet` starts one refresher and at most one configured invalidation
 watcher only through an explicit `Start` call and joins them through

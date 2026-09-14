@@ -62,7 +62,7 @@ func (p *MemoryProvider) Create(
 	definition Definition,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	if err := definition.Validate(p.limits); err != nil {
@@ -99,7 +99,7 @@ func (p *MemoryProvider) Update(
 	expectedVersion uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	if err := definition.Validate(p.limits); err != nil {
@@ -134,7 +134,7 @@ func (p *MemoryProvider) Update(
 }
 
 func (p *MemoryProvider) Snapshot(ctx context.Context, tenant string) (Snapshot, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Snapshot{}, err
 	}
 
@@ -164,7 +164,7 @@ func (p *MemoryProvider) CreateGroup(
 	group GroupDefinition,
 	actor string,
 ) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	p.mu.Lock()
@@ -202,7 +202,7 @@ func (p *MemoryProvider) UpdateGroup(
 	expectedVersion uint64,
 	actor string,
 ) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	p.mu.Lock()
@@ -239,7 +239,7 @@ func (p *MemoryProvider) DeleteGroup(
 	expectedVersion uint64,
 	actor string,
 ) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	p.mu.Lock()
@@ -275,7 +275,7 @@ func (p *MemoryProvider) AssignGroup(
 	expectedVersion uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	p.mu.Lock()
@@ -315,7 +315,7 @@ func (p *MemoryProvider) RemoveGroup(
 	expectedVersion uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	p.mu.Lock()
@@ -415,7 +415,7 @@ func (p *MemoryProvider) Restore(
 	expectedVersion uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	p.mu.Lock()
@@ -438,7 +438,7 @@ func (p *MemoryProvider) Restore(
 }
 
 func (p *MemoryProvider) Audit(ctx context.Context, tenant, key string) ([]AuditEntry, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err
 	}
 	p.mu.RLock()
@@ -463,7 +463,7 @@ func (p *MemoryProvider) setLifecycle(
 	action AuditAction,
 	deleted bool,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	p.mu.Lock()
@@ -509,12 +509,15 @@ func versionConflict(tenant, key string, current, expected uint64) error {
 	)
 }
 
-func providerInput(ctx context.Context, tenant string) error {
+func providerInput(ctx context.Context, tenant string, maxTenantBytes int) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if tenant == "" {
 		return ErrTenantRequired
+	}
+	if len(tenant) > maxTenantBytes {
+		return fmt.Errorf("tenant exceeds %d bytes: %w", maxTenantBytes, ErrContextLimit)
 	}
 
 	return nil

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +60,25 @@ type lifecycleProvider struct {
 	health      featureflags.ProviderHealth
 	closed      bool
 	snapshotErr error
+	snapshots   int
+}
+
+type countingJSONMarshaler struct {
+	called *bool
+}
+
+type pointerJSONMarshaler struct{}
+
+func (*pointerJSONMarshaler) MarshalJSON() ([]byte, error) { return []byte(`null`), nil }
+
+type pointerTextMarshaler struct{}
+
+func (*pointerTextMarshaler) MarshalText() ([]byte, error) { return []byte("value"), nil }
+
+func (marshaler countingJSONMarshaler) MarshalJSON() ([]byte, error) {
+	*marshaler.called = true
+
+	return []byte(`"value"`), nil
 }
 
 func (provider *lifecycleProvider) Health(context.Context) featureflags.ProviderHealth {
@@ -73,10 +94,97 @@ func (provider *lifecycleProvider) Snapshot(
 	ctx context.Context,
 	tenant string,
 ) (featureflags.Snapshot, error) {
+	provider.snapshots++
 	if provider.snapshotErr != nil {
 		return featureflags.Snapshot{}, provider.snapshotErr
 	}
 	return provider.Provider.Snapshot(ctx, tenant)
+}
+
+func TestProviderRejectsHostileContextBeforeNativeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	native := &lifecycleProvider{Provider: featureflags.NewMemoryProvider(featureflags.DefaultLimits())}
+	provider, err := New(native, "tenant-a", Options{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	deepValue := any(true)
+	for range featureflags.DefaultLimits().MaxEvaluationDepth + 1 {
+		deepValue = []any{deepValue}
+	}
+	cyclicValue := map[string]any{}
+	cyclicValue["self"] = cyclicValue
+	contexts := map[string]of.FlattenedContext{
+		"too many facts": func() of.FlattenedContext {
+			contextValue := make(of.FlattenedContext, featureflags.DefaultLimits().MaxFacts+1)
+			for index := range featureflags.DefaultLimits().MaxFacts + 1 {
+				contextValue["fact."+strconv.Itoa(index)] = true
+			}
+			return contextValue
+		}(),
+		"oversized key": {
+			string(make([]byte, featureflags.DefaultLimits().MaxContextKeyBytes+1)): true,
+		},
+		"oversized value": {
+			"plan": string(make([]byte, featureflags.DefaultLimits().MaxContextValueBytes+1)),
+		},
+		"oversized targeting key": {
+			of.TargetingKey: string(make([]byte, featureflags.DefaultLimits().MaxContextValueBytes+1)),
+		},
+		"invalid environment type": {"environment": 1},
+		"oversized structured value": {
+			"claims": json.RawMessage(`"` + string(make([]byte, featureflags.DefaultLimits().MaxStructuredBytes+1)) + `"`),
+		},
+		"excessive structured depth": {"claims": deepValue},
+		"cyclic structured value":    {"claims": cyclicValue},
+	}
+	for name, contextValue := range contexts {
+		t.Run(name, func(t *testing.T) {
+			detail := provider.BooleanEvaluation(t.Context(), "flag", true, contextValue)
+			if !detail.Value || detail.Error() == nil || detail.ResolutionDetail().ErrorCode != of.InvalidContextCode {
+				t.Fatalf("BooleanEvaluation() = %#v, want default with invalid-context error", detail)
+			}
+		})
+	}
+	if native.snapshots != 0 {
+		t.Fatalf("native provider received %d snapshot call(s) for hostile contexts", native.snapshots)
+	}
+}
+
+func TestProviderRejectsContextCardinalityBeforeInspectingEntries(t *testing.T) {
+	t.Parallel()
+
+	provider := &Provider{limits: featureflags.DefaultLimits()}
+	contextValue := make(of.FlattenedContext, provider.limits.MaxFacts+5)
+	for index := range provider.limits.MaxFacts + 5 {
+		key := strings.Repeat("k", provider.limits.MaxContextKeyBytes+1) + strconv.Itoa(index)
+		contextValue[key] = true
+	}
+
+	_, err := provider.mapContext(contextValue)
+	if err == nil || err.Error() != "context entries exceed configured bounds: evaluation context exceeds limit" {
+		t.Fatalf("mapContext() error = %v, want cardinality rejection before entry inspection", err)
+	}
+}
+
+func TestNewRejectsTypedNilNativeProvider(t *testing.T) {
+	t.Parallel()
+
+	var native *lifecycleProvider
+	if _, err := New(native, "tenant-a", Options{}); err == nil {
+		t.Fatal("New() accepted a typed-nil native provider")
+	}
+	if isNil(1) {
+		t.Fatal("isNil() classified a concrete scalar as nil")
+	}
+	if _, err := New(featureflags.NewMemoryProvider(featureflags.DefaultLimits()), strings.Repeat("t", featureflags.DefaultLimits().MaxKeyBytes), Options{}); err != nil {
+		t.Fatalf("New() exact tenant limit error = %v", err)
+	}
+	if _, err := New(featureflags.NewMemoryProvider(featureflags.DefaultLimits()), strings.Repeat("t", featureflags.DefaultLimits().MaxKeyBytes+1), Options{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("New() oversized tenant error = %v, want ErrContextLimit", err)
+	}
 }
 
 func TestProviderExposesEveryCompatibleTypeAndLifecycle(t *testing.T) {
@@ -282,6 +390,20 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	if _, err := mapFact(uint(math.MaxUint64)); strconv.IntSize == 64 && err == nil {
 		t.Fatal("mapFact(max uint) succeeded")
 	}
+	for _, value := range []float64{math.NaN(), math.Inf(1)} {
+		if _, err := mapFact(value); !errors.Is(err, featureflags.ErrContextLimit) {
+			t.Fatalf("mapFact(%v) error = %v, want ErrContextLimit", value, err)
+		}
+	}
+	if _, err := mapFact(float32(math.Inf(-1))); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFact(float32 -Inf) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFact(json.RawMessage(`{`)); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFact(invalid raw JSON) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFact(make(chan int)); err == nil {
+		t.Fatal("mapFact(channel) succeeded")
+	}
 	maximumSigned := uint64(math.MaxInt64)
 	if strconv.IntSize == 64 {
 		fact, err := mapFact(uint(maximumSigned))
@@ -336,6 +458,327 @@ func TestFactAndReasonMappingsAreComplete(t *testing.T) {
 	if _, exists := boundaryDetail.FlagMetadata["matchedStrategy"]; exists {
 		t.Fatalf("mapDetail(empty strategy) = %#v", boundaryDetail.FlagMetadata)
 	}
+}
+
+func TestStructuredFactPreflightBoundsWorkBeforeEncoding(t *testing.T) {
+	t.Parallel()
+
+	limits := featureflags.DefaultLimits()
+	if err := validateStructuredInput("value", limits, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(string) error = %v", err)
+	}
+	limits.MaxStructuredBytes = 2
+	if err := validateStructuredInput(map[string]any{"oversized": true}, limits, 0, &structuredBudget{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("validateStructuredInput(bytes) error = %v, want ErrContextLimit", err)
+	}
+	limits.MaxStructuredBytes = 1
+	if err := validateStructuredInput([]any{true}, limits, 0, &structuredBudget{}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("validateStructuredInput(nodes) error = %v, want ErrContextLimit", err)
+	}
+	limits.MaxStructuredBytes = 4
+	if _, err := mapFactWithLimits(struct{ Value string }{Value: "oversized"}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(encoded size) error = %v, want ErrContextLimit", err)
+	}
+
+	type namedMap map[string]any
+	cyclic := namedMap{}
+	cyclic["self"] = cyclic
+	limits = featureflags.DefaultLimits()
+	if _, err := mapFactWithLimits(cyclic, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(named cycle) error = %v, want ErrContextLimit", err)
+	}
+
+	called := false
+	if _, err := mapFactWithLimits(map[string]any{
+		"custom": countingJSONMarshaler{called: &called},
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(custom marshaler) error = %v, want ErrContextLimit", err)
+	}
+	if called {
+		t.Fatal("mapFactWithLimits invoked a custom JSON marshaler during bounded preflight")
+	}
+
+	if _, err := mapFactWithLimits(map[string]any{
+		"raw": json.RawMessage(`{`),
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(nested invalid raw JSON) error = %v, want ErrContextLimit", err)
+	}
+	if _, err := mapFactWithLimits(map[string]any{
+		"raw": json.RawMessage(`"safe"`),
+	}, limits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(nested raw JSON) error = %v, want ErrContextLimit", err)
+	}
+}
+
+func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *testing.T) {
+	t.Parallel()
+
+	defaults := featureflags.DefaultLimits()
+	assertContextLimit := func(t *testing.T, err error) {
+		t.Helper()
+		if !errors.Is(err, featureflags.ErrContextLimit) {
+			t.Fatalf("error = %v, want ErrContextLimit", err)
+		}
+	}
+
+	assertContextLimit(t, validateStructuredValue(reflect.ValueOf(true), defaults, 0, &structuredBudget{nodes: defaults.MaxStructuredBytes}))
+	nodeBudget := &structuredBudget{}
+	if err := validateStructuredInput(true, defaults, 0, nodeBudget); err != nil {
+		t.Fatalf("validateStructuredInput(single node) error = %v", err)
+	}
+	if nodeBudget.nodes != 1 {
+		t.Fatalf("validateStructuredInput(single node) nodes = %d, want 1", nodeBudget.nodes)
+	}
+	nodeLimits := defaults
+	nodeLimits.MaxStructuredBytes = 2
+	assertContextLimit(t, validateStructuredInput([]any{true}, nodeLimits, 0, &structuredBudget{}))
+	if err := validateStructuredInput(nil, defaults, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(nil) error = %v", err)
+	}
+	var nilInterface any
+	if err := validateStructuredValue(reflect.ValueOf(&nilInterface).Elem(), defaults, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredValue(nil interface) error = %v", err)
+	}
+	var nilPointer *int
+	if err := validateStructuredInput(nilPointer, defaults, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(nil pointer) error = %v", err)
+	}
+	var pointerCycle any
+	pointerCycle = &pointerCycle
+	assertContextLimit(t, validateStructuredInput(pointerCycle, defaults, 0, &structuredBudget{}))
+
+	assertContextLimit(t, validateStructuredInput(map[int]string{1: "value"}, defaults, 0, &structuredBudget{}))
+	var nilMap map[string]any
+	if err := validateStructuredInput(nilMap, defaults, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(nil map) error = %v", err)
+	}
+	mapLimits := defaults
+	mapLimits.MaxStructuredBytes = 1
+	assertContextLimit(t, validateStructuredInput(map[string]any{}, mapLimits, 0, &structuredBudget{}))
+	mapLimits.MaxStructuredBytes = 4
+	assertContextLimit(t, validateStructuredInput(map[string]any{"long": true}, mapLimits, 0, &structuredBudget{}))
+	mapLimits.MaxStructuredBytes = 5
+	assertContextLimit(t, validateStructuredInput(map[string]any{"": true}, mapLimits, 0, &structuredBudget{}))
+	mapLimits.MaxStructuredBytes = 8
+	assertContextLimit(t, validateStructuredInput(map[string]any{"": true}, mapLimits, 0, &structuredBudget{}))
+
+	var nilSlice []any
+	if err := validateStructuredInput(nilSlice, defaults, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(nil slice) error = %v", err)
+	}
+	byteLimits := defaults
+	byteLimits.MaxStructuredBytes = 1
+	assertContextLimit(t, validateStructuredInput([]byte{}, byteLimits, 0, &structuredBudget{}))
+	byteLimits.MaxStructuredBytes = 4
+	assertContextLimit(t, validateStructuredInput(make([]byte, 3), byteLimits, 0, &structuredBudget{}))
+	byteLimits.MaxStructuredBytes = 5
+	if err := validateStructuredInput(make([]byte, 6), byteLimits, 0, &structuredBudget{}); err == nil || !strings.Contains(err.Error(), "encoding exceeds") {
+		t.Fatalf("validateStructuredInput(byte group limit) error = %v", err)
+	}
+	byteLimits.MaxStructuredBytes = 6
+	if err := validateStructuredInput(make([]byte, 3), byteLimits, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(exact base64 group) error = %v", err)
+	}
+	byteLimits.MaxStructuredBytes = 10
+	if err := validateStructuredInput(make([]byte, 4), byteLimits, 0, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredInput(base64 remainder) error = %v", err)
+	}
+	cyclicSlice := make([]any, 1)
+	cyclicSlice[0] = cyclicSlice
+	assertContextLimit(t, validateStructuredInput(cyclicSlice, defaults, 0, &structuredBudget{}))
+	arrayLimits := defaults
+	arrayLimits.MaxStructuredBytes = 1
+	assertContextLimit(t, validateStructuredInput([0]bool{}, arrayLimits, 0, &structuredBudget{}))
+	arrayLimits.MaxStructuredBytes = 7
+	assertContextLimit(t, validateStructuredInput([2]bool{true, true}, arrayLimits, 0, &structuredBudget{}))
+	arrayBudget := &structuredBudget{}
+	if err := validateStructuredInput([3]bool{true, false, true}, defaults, 0, arrayBudget); err != nil {
+		t.Fatalf("validateStructuredInput(array) error = %v", err)
+	}
+	const conservativeArrayBytes = 2 + 3*5 + 2
+	if arrayBudget.bytes != conservativeArrayBytes {
+		t.Fatalf("array encoded byte budget = %d, want %d", arrayBudget.bytes, conservativeArrayBytes)
+	}
+	depthLimits := defaults
+	depthLimits.MaxEvaluationDepth = 1
+	if err := validateStructuredValue(reflect.ValueOf(true), depthLimits, depthLimits.MaxEvaluationDepth, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredValue(exact depth) error = %v", err)
+	}
+	value := 1
+	pointer := &value
+	assertContextLimit(t, validateStructuredInput(&pointer, depthLimits, 0, &structuredBudget{}))
+	depthLimits.MaxEvaluationDepth = 0
+	assertContextLimit(t, validateStructuredInput(map[string]any{"nested": map[string]any{}}, depthLimits, 0, &structuredBudget{}))
+
+	for _, value := range []any{int64(1), uint64(1), float64(1)} {
+		if err := validateStructuredInput(value, defaults, 0, &structuredBudget{}); err != nil {
+			t.Fatalf("validateStructuredInput(%T) error = %v", value, err)
+		}
+	}
+	assertContextLimit(t, validateStructuredInput(math.NaN(), defaults, 0, &structuredBudget{}))
+	if implementsCustomEncoding(reflect.TypeOf((*int)(nil))) {
+		t.Fatal("plain pointer type implements custom encoding")
+	}
+	if !implementsCustomEncoding(reflect.TypeOf(pointerJSONMarshaler{})) {
+		t.Fatal("pointer-receiver marshaler was not detected")
+	}
+	if !implementsCustomEncoding(reflect.TypeOf(pointerTextMarshaler{})) {
+		t.Fatal("pointer-receiver text marshaler was not detected")
+	}
+	if !implementsCustomEncoding(reflect.TypeOf((*pointerJSONMarshaler)(nil))) {
+		t.Fatal("JSON marshaler pointer type was not detected")
+	}
+	if !implementsCustomEncoding(reflect.TypeOf(countingJSONMarshaler{})) {
+		t.Fatal("value-receiver JSON marshaler was not detected")
+	}
+
+	stringLimits := defaults
+	stringLimits.MaxStructuredBytes = 2
+	if err := addStructuredString("", stringLimits, &structuredBudget{}); err != nil {
+		t.Fatalf("addStructuredString(exact empty string) error = %v", err)
+	}
+	stringLimits.MaxStructuredBytes = 1
+	assertContextLimit(t, addStructuredString("", stringLimits, &structuredBudget{}))
+	for value, wantBytes := range map[string]int{
+		"a": 3, "\xff": 5, "\x00": 8, "<": 8, ">": 8, "&": 8,
+		"\u2028": 8, "\u2029": 8, `"`: 4, `\`: 4,
+	} {
+		budget := &structuredBudget{}
+		if err := addStructuredString(value, defaults, budget); err != nil {
+			t.Fatalf("addStructuredString(%q) error = %v", value, err)
+		}
+		if budget.bytes != wantBytes {
+			t.Fatalf("addStructuredString(%q) byte budget = %d, want %d", value, budget.bytes, wantBytes)
+		}
+	}
+	stringLimits.MaxStructuredBytes = 2
+	exactLengthBudget := &structuredBudget{}
+	encoded := false
+	assertContextLimit(t, addStructuredStringWithEncoder("aa", stringLimits, exactLengthBudget, func(string) []byte {
+		encoded = true
+
+		return []byte(`"aa"`)
+	}))
+	if !encoded {
+		t.Fatal("exact-length string was rejected before bounded encoding")
+	}
+	if exactLengthBudget.bytes != 0 {
+		t.Fatalf("exact-length string budget = %d, want atomic rejection", exactLengthBudget.bytes)
+	}
+	assertContextLimit(t, addStructuredString("a", stringLimits, &structuredBudget{}))
+	assertContextLimit(t, addStructuredBytes(-1, defaults, &structuredBudget{}))
+	assertContextLimit(t, addStructuredBytes(0, defaults, &structuredBudget{bytes: defaults.MaxStructuredBytes + 1}))
+	assertContextLimit(t, addStructuredBytes(2, defaults, &structuredBudget{bytes: defaults.MaxStructuredBytes - 1}))
+	for name, test := range map[string]struct {
+		count  int
+		budget *structuredBudget
+	}{
+		"zero":        {count: 0, budget: &structuredBudget{}},
+		"exact total": {count: 0, budget: &structuredBudget{bytes: defaults.MaxStructuredBytes}},
+		"exact room":  {count: 1, budget: &structuredBudget{bytes: defaults.MaxStructuredBytes - 1}},
+	} {
+		if err := addStructuredBytes(test.count, defaults, test.budget); err != nil {
+			t.Fatalf("addStructuredBytes(%s) error = %v", name, err)
+		}
+	}
+
+	marshalError := errors.New("marshal failed")
+	if _, err := mapFactWithLimitsAndMarshal(map[string]any{}, defaults, func(any) ([]byte, error) {
+		return nil, marshalError
+	}); !errors.Is(err, marshalError) {
+		t.Fatalf("mapFactWithLimitsAndMarshal(error) = %v, want marshal error", err)
+	}
+	encodedLimits := defaults
+	encodedLimits.MaxStructuredBytes = 2
+	if fact, err := mapFactWithLimitsAndMarshal(map[string]any{}, encodedLimits, func(any) ([]byte, error) {
+		return []byte("{}"), nil
+	}); err != nil {
+		t.Fatalf("mapFactWithLimitsAndMarshal(exact) error = %v", err)
+	} else if raw, ok := fact.Structured(); !ok || string(raw) != "{}" {
+		t.Fatalf("mapFactWithLimitsAndMarshal(exact) = (%q, %t)", raw, ok)
+	}
+	if _, err := mapFactWithLimitsAndMarshal(map[string]any{}, encodedLimits, func(any) ([]byte, error) {
+		return []byte("oversized"), nil
+	}); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimitsAndMarshal(oversized) = %v, want ErrContextLimit", err)
+	}
+}
+
+func TestContextShapeAcceptsExactLimitsAndRejectsEachIndependentOverflow(t *testing.T) {
+	t.Parallel()
+
+	limits := featureflags.DefaultLimits()
+	limits.MaxFacts = 2
+	limits.MaxAttributes = 1
+	limits.MaxContextKeyBytes = len(string(of.TargetingKey))
+	limits.MaxContextValueBytes = 2
+	provider := &Provider{limits: limits}
+	exact := of.FlattenedContext{
+		of.TargetingKey: "aa",
+		"environment":   "aa",
+		"tenant":        "tenant-a",
+		"time":          time.Time{},
+		strings.Repeat("k", limits.MaxContextKeyBytes): "aa",
+		"b": true,
+	}
+	if err := provider.validateContextShape(exact, limits); err != nil {
+		t.Fatalf("validateContextShape(exact) error = %v", err)
+	}
+	for name, contextValue := range map[string]of.FlattenedContext{
+		"total entries": func() of.FlattenedContext {
+			value := mapsClone(exact)
+			value["c"] = true
+			return value
+		}(),
+		"key bytes":       {strings.Repeat("k", limits.MaxContextKeyBytes+1): true},
+		"identity bytes":  {of.TargetingKey: "abc"},
+		"fact count":      {"a": true, "b": true, "c": true},
+		"attribute count": {"a": "a", "b": "b"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			asserted := provider.validateContextShape(contextValue, limits)
+			if !errors.Is(asserted, featureflags.ErrContextLimit) {
+				t.Fatalf("validateContextShape() error = %v, want ErrContextLimit", asserted)
+			}
+		})
+	}
+
+	stringLimits := limits
+	stringLimits.MaxStringBytes = 2
+	stringLimits.MaxContextValueBytes = 3
+	if _, err := mapFactWithLimits("aa", stringLimits); err != nil {
+		t.Fatalf("mapFactWithLimits(exact string) error = %v", err)
+	}
+	if _, err := mapFactWithLimits("aaa", stringLimits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(string limit) error = %v", err)
+	}
+	stringLimits.MaxStringBytes = 4
+	if _, err := mapFactWithLimits("aaa", stringLimits); err != nil {
+		t.Fatalf("mapFactWithLimits(exact context string) error = %v", err)
+	}
+	if _, err := mapFactWithLimits("aaaa", stringLimits); !errors.Is(err, featureflags.ErrContextLimit) {
+		t.Fatalf("mapFactWithLimits(context string limit) error = %v", err)
+	}
+
+	rawLimits := limits
+	rawLimits.MaxStructuredBytes = 4
+	if _, err := mapFactWithLimits(json.RawMessage(`null`), rawLimits); err != nil {
+		t.Fatalf("mapFactWithLimits(exact raw JSON) error = %v", err)
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`false`), json.RawMessage(`nope`)} {
+		if _, err := mapFactWithLimits(raw, rawLimits); !errors.Is(err, featureflags.ErrContextLimit) {
+			t.Fatalf("mapFactWithLimits(raw JSON %q) error = %v", raw, err)
+		}
+	}
+}
+
+func mapsClone(source of.FlattenedContext) of.FlattenedContext {
+	clone := make(of.FlattenedContext, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+
+	return clone
 }
 
 func TestEveryEvaluationMethodPreservesDefaultsOnNativeErrors(t *testing.T) {

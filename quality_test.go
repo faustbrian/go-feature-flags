@@ -424,7 +424,7 @@ func BenchmarkFleetCurrentInvalidation(b *testing.B) {
 func TestProviderInputRejectsCancelledContextBeforeTenant(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := providerInput(ctx, ""); !errors.Is(err, context.Canceled) {
+	if err := providerInput(ctx, "", DefaultLimits().MaxKeyBytes); !errors.Is(err, context.Canceled) {
 		t.Fatalf("providerInput() error = %v, want context.Canceled", err)
 	}
 }

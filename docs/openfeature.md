@@ -11,6 +11,9 @@ versions and matched strategy names are exposed as bounded metadata.
 
 OpenFeature targeting key maps to native subject. Flattened string fields map
 to attributes; supported scalar and structured values map to typed facts.
+The adapter applies native context count and size limits before loading a
+snapshot. Structured values receive bounded preflight before JSON encoding;
+cycles, unsupported values, and custom JSON or text encoders are rejected.
 Mapping does not mutate native strategy order, dependency behavior, group
 inheritance, snapshot semantics, or reasons.
 

@@ -24,7 +24,7 @@ func (p *MemoryProvider) StageUpdate(
 	applyAt time.Time,
 	actor string,
 ) (StagedChange, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return StagedChange{}, err
 	}
 	if err := definition.Validate(p.limits); err != nil {
@@ -67,7 +67,7 @@ func (p *MemoryProvider) ApplyStage(
 	id uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Definition{}, err
 	}
 	p.mu.Lock()
@@ -86,7 +86,7 @@ func (p *MemoryProvider) ApplyScheduled(
 	now time.Time,
 	actor string,
 ) ([]Definition, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err
 	}
 	if now.IsZero() {
@@ -109,7 +109,7 @@ func (p *MemoryProvider) ApplyScheduled(
 }
 
 func (p *MemoryProvider) StagedChanges(ctx context.Context, tenant string) ([]StagedChange, error) {
-	if err := providerInput(ctx, tenant); err != nil {
+	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err
 	}
 	p.mu.RLock()

@@ -5,6 +5,14 @@ Versioning.
 
 ## Unreleased
 
+### Security
+
+- Reject oversized tenant partitions before memory retention, cache lookup, or
+  durable backend work, and bound OpenFeature flattened contexts before native
+  snapshot loading or structured JSON encoding.
+- Reject typed-nil native OpenFeature providers and unbounded custom structured
+  encoders, and document the package threat model and accepted residual risks.
+
 ### Changed
 
 - Require Go 1.27.0 across module, development, CI, and compatibility

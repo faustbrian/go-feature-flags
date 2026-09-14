@@ -14,6 +14,7 @@
 
 ## Operations and security
 
+- [Security model and accepted risks](security.md)
 - [Verification](verification.md)
 - [Troubleshooting](faq.md)
 - [Support](../SUPPORT.md)
