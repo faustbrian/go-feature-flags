@@ -18,7 +18,7 @@ result.
 - The OpenFeature adapter validates its fixed tenant and flattened context
   before requesting a native snapshot. Structured values receive bounded
   depth, node, and encoded-size preflight before JSON encoding; cycles,
-  unsupported values, and custom JSON or text marshalers are rejected.
+  unsupported values, and custom JSON or text encoders are rejected.
   Typed-nil native providers are rejected at construction.
 - Imports, durable state, audit history, staged changes, cache tenant count,
   cache feature count, invalidation history, retries, and fleet concurrency
