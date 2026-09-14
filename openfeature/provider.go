@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	featureflags "github.com/faustbrian/go-feature-flags"
 	of "github.com/open-feature/go-sdk/openfeature"
@@ -567,31 +566,9 @@ func addStructuredString(value string, limits featureflags.Limits, budget *struc
 	if len(value) > limits.MaxStructuredBytes {
 		return fmt.Errorf("structured fact exceeds %d input bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
 	}
-	if err := addStructuredBytes(2, limits, budget); err != nil {
-		return err
-	}
-	for {
-		if value == "" {
-			break
-		}
-		runeValue, size := utf8.DecodeRuneInString(value)
-		encodedBytes := size
-		switch {
-		case runeValue == utf8.RuneError && size == 1:
-			encodedBytes = 6
-		case runeValue < 0x20 || runeValue == '<' || runeValue == '>' || runeValue == '&' ||
-			runeValue == '\u2028' || runeValue == '\u2029':
-			encodedBytes = 6
-		case runeValue == '"' || runeValue == '\\':
-			encodedBytes = 2
-		}
-		if err := addStructuredBytes(encodedBytes, limits, budget); err != nil {
-			return err
-		}
-		value = value[size:]
-	}
+	encoded, _ := json.Marshal(value)
 
-	return nil
+	return addStructuredBytes(len(encoded), limits, budget)
 }
 
 func addStructuredBytes(count int, limits featureflags.Limits, budget *structuredBudget) error {

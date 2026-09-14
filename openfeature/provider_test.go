@@ -522,6 +522,13 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	}
 
 	assertContextLimit(t, validateStructuredValue(reflect.ValueOf(true), defaults, 0, &structuredBudget{nodes: defaults.MaxStructuredBytes}))
+	nodeBudget := &structuredBudget{}
+	if err := validateStructuredInput(true, defaults, 0, nodeBudget); err != nil {
+		t.Fatalf("validateStructuredInput(single node) error = %v", err)
+	}
+	if nodeBudget.nodes != 1 {
+		t.Fatalf("validateStructuredInput(single node) nodes = %d, want 1", nodeBudget.nodes)
+	}
 	nodeLimits := defaults
 	nodeLimits.MaxStructuredBytes = 2
 	assertContextLimit(t, validateStructuredInput([]any{true}, nodeLimits, 0, &structuredBudget{}))
@@ -618,6 +625,9 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	if !implementsCustomEncoding(reflect.TypeOf(pointerTextMarshaler{})) {
 		t.Fatal("pointer-receiver text marshaler was not detected")
 	}
+	if !implementsCustomEncoding(reflect.TypeOf(countingJSONMarshaler{})) {
+		t.Fatal("value-receiver JSON marshaler was not detected")
+	}
 
 	stringLimits := defaults
 	stringLimits.MaxStructuredBytes = 2
@@ -627,7 +637,7 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	stringLimits.MaxStructuredBytes = 1
 	assertContextLimit(t, addStructuredString("", stringLimits, &structuredBudget{}))
 	for value, wantBytes := range map[string]int{
-		"a": 3, "\xff": 8, "\x00": 8, "<": 8, ">": 8, "&": 8,
+		"a": 3, "\xff": 5, "\x00": 8, "<": 8, ">": 8, "&": 8,
 		"\u2028": 8, "\u2029": 8, `"`: 4, `\`: 4,
 	} {
 		budget := &structuredBudget{}
@@ -641,8 +651,8 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	stringLimits.MaxStructuredBytes = 2
 	exactLengthBudget := &structuredBudget{}
 	assertContextLimit(t, addStructuredString("aa", stringLimits, exactLengthBudget))
-	if exactLengthBudget.bytes != 2 {
-		t.Fatalf("exact-length string budget = %d, want opening and closing quote budget", exactLengthBudget.bytes)
+	if exactLengthBudget.bytes != 0 {
+		t.Fatalf("exact-length string budget = %d, want atomic rejection", exactLengthBudget.bytes)
 	}
 	assertContextLimit(t, addStructuredString("a", stringLimits, &structuredBudget{}))
 	assertContextLimit(t, addStructuredBytes(-1, defaults, &structuredBudget{}))
