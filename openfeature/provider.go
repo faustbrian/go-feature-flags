@@ -324,6 +324,14 @@ func mapFact(value any) (featureflags.Value, error) {
 }
 
 func mapFactWithLimits(value any, limits featureflags.Limits) (featureflags.Value, error) {
+	return mapFactWithLimitsAndMarshal(value, limits, json.Marshal)
+}
+
+func mapFactWithLimitsAndMarshal(
+	value any,
+	limits featureflags.Limits,
+	marshal func(any) ([]byte, error),
+) (featureflags.Value, error) {
 	switch typed := value.(type) {
 	case bool:
 		return featureflags.BooleanValue(typed), nil
@@ -377,7 +385,7 @@ func mapFactWithLimits(value any, limits featureflags.Limits) (featureflags.Valu
 		if err := validateStructuredInput(value, limits, 0, &structuredBudget{}); err != nil {
 			return featureflags.Value{}, err
 		}
-		encoded, err := json.Marshal(value)
+		encoded, err := marshal(value)
 		if err != nil {
 			return featureflags.Value{}, fmt.Errorf("encode structured fact: %w", err)
 		}
