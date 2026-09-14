@@ -179,6 +179,9 @@ func TestNewRejectsTypedNilNativeProvider(t *testing.T) {
 	if isNil(1) {
 		t.Fatal("isNil() classified a concrete scalar as nil")
 	}
+	if _, err := New(featureflags.NewMemoryProvider(featureflags.DefaultLimits()), strings.Repeat("t", featureflags.DefaultLimits().MaxKeyBytes), Options{}); err != nil {
+		t.Fatalf("New() exact tenant limit error = %v", err)
+	}
 	if _, err := New(featureflags.NewMemoryProvider(featureflags.DefaultLimits()), strings.Repeat("t", featureflags.DefaultLimits().MaxKeyBytes+1), Options{}); !errors.Is(err, featureflags.ErrContextLimit) {
 		t.Fatalf("New() oversized tenant error = %v, want ErrContextLimit", err)
 	}
@@ -591,6 +594,9 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	}
 	depthLimits := defaults
 	depthLimits.MaxEvaluationDepth = 1
+	if err := validateStructuredValue(reflect.ValueOf(true), depthLimits, depthLimits.MaxEvaluationDepth, &structuredBudget{}); err != nil {
+		t.Fatalf("validateStructuredValue(exact depth) error = %v", err)
+	}
 	value := 1
 	pointer := &value
 	assertContextLimit(t, validateStructuredInput(&pointer, depthLimits, 0, &structuredBudget{}))
@@ -633,6 +639,11 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 		}
 	}
 	stringLimits.MaxStructuredBytes = 2
+	exactLengthBudget := &structuredBudget{}
+	assertContextLimit(t, addStructuredString("aa", stringLimits, exactLengthBudget))
+	if exactLengthBudget.bytes != 2 {
+		t.Fatalf("exact-length string budget = %d, want opening and closing quote budget", exactLengthBudget.bytes)
+	}
 	assertContextLimit(t, addStructuredString("a", stringLimits, &structuredBudget{}))
 	assertContextLimit(t, addStructuredBytes(-1, defaults, &structuredBudget{}))
 	assertContextLimit(t, addStructuredBytes(0, defaults, &structuredBudget{bytes: defaults.MaxStructuredBytes + 1}))
