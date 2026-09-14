@@ -653,7 +653,15 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	}
 	stringLimits.MaxStructuredBytes = 2
 	exactLengthBudget := &structuredBudget{}
-	assertContextLimit(t, addStructuredString("aa", stringLimits, exactLengthBudget))
+	encoded := false
+	assertContextLimit(t, addStructuredStringWithEncoder("aa", stringLimits, exactLengthBudget, func(string) []byte {
+		encoded = true
+
+		return []byte(`"aa"`)
+	}))
+	if !encoded {
+		t.Fatal("exact-length string was rejected before bounded encoding")
+	}
 	if exactLengthBudget.bytes != 0 {
 		t.Fatalf("exact-length string budget = %d, want atomic rejection", exactLengthBudget.bytes)
 	}
