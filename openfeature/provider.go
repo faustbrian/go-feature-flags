@@ -296,15 +296,10 @@ func (provider *Provider) validateContextShape(flat of.FlattenedContext, limits 
 		}
 		switch key {
 		case string(of.TargetingKey), "environment":
-			text, ok := value.(string)
-			if !ok {
-				continue
-			}
-			if len(text) > limits.MaxContextValueBytes {
+			if text, ok := value.(string); ok && len(text) > limits.MaxContextValueBytes {
 				return fmt.Errorf("context identity exceeds %d bytes: %w", limits.MaxContextValueBytes, featureflags.ErrContextLimit)
 			}
 		case "tenant", "time":
-			continue
 		default:
 			facts++
 			if _, ok := value.(string); ok {
@@ -490,7 +485,7 @@ func validateStructuredValue(value reflect.Value, limits featureflags.Limits, de
 			}
 			groups := value.Len() / 3
 			if groups > limits.MaxStructuredBytes/4 {
-				return fmt.Errorf("structured fact exceeds %d input bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
+				return fmt.Errorf("structured byte slice encoding exceeds %d bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
 			}
 			if err := addStructuredBytes(groups*4, limits, budget); err != nil {
 				return err
@@ -575,7 +570,10 @@ func addStructuredString(value string, limits featureflags.Limits, budget *struc
 	if err := addStructuredBytes(2, limits, budget); err != nil {
 		return err
 	}
-	for len(value) > 0 {
+	for {
+		if value == "" {
+			break
+		}
 		runeValue, size := utf8.DecodeRuneInString(value)
 		encodedBytes := size
 		switch {
