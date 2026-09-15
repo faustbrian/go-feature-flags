@@ -3,7 +3,7 @@ module github.com/faustbrian/go-feature-flags
 go 1.27.0
 
 require (
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/open-feature/go-sdk v1.17.2
 	github.com/valkey-io/valkey-go v1.0.76
 	go.uber.org/goleak v1.3.0
