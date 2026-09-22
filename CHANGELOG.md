@@ -5,6 +5,8 @@ Versioning.
 
 ## Unreleased
 
+## 1.0.1 - 2026-09-22
+
 ### Security
 
 - Reject oversized tenant partitions before memory retention, cache lookup, or
