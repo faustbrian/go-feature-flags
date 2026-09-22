@@ -639,8 +639,18 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 	}
 	stringLimits.MaxStructuredBytes = 1
 	assertContextLimit(t, addStructuredString("", stringLimits, &structuredBudget{}))
+	invalidUTF8 := "\xff"
+	encodedInvalidUTF8, err := json.Marshal(invalidUTF8)
+	if err != nil {
+		t.Fatalf("json.Marshal(invalid UTF-8) error = %v", err)
+	}
+	legacyInvalidUTF8 := `"\ufffd"`
+	modernInvalidUTF8 := "\"\ufffd\""
+	if encoded := string(encodedInvalidUTF8); encoded != legacyInvalidUTF8 && encoded != modernInvalidUTF8 {
+		t.Fatalf("json.Marshal(invalid UTF-8) = %q, want %q or %q", encoded, legacyInvalidUTF8, modernInvalidUTF8)
+	}
 	for value, wantBytes := range map[string]int{
-		"a": 3, "\xff": 5, "\x00": 8, "<": 8, ">": 8, "&": 8,
+		"a": 3, invalidUTF8: len(encodedInvalidUTF8), "\x00": 8, "<": 8, ">": 8, "&": 8,
 		"\u2028": 8, "\u2029": 8, `"`: 4, `\`: 4,
 	} {
 		budget := &structuredBudget{}
@@ -651,6 +661,48 @@ func TestStructuredFactPreflightRejectsHostileShapesAtEachBudgetBoundary(t *test
 			t.Fatalf("addStructuredString(%q) byte budget = %d, want %d", value, budget.bytes, wantBytes)
 		}
 	}
+	invalidUTF8Limits := defaults
+	invalidUTF8Limits.MaxStructuredBytes = len(encodedInvalidUTF8)
+	invalidUTF8Budget := &structuredBudget{}
+	if err := addStructuredString(invalidUTF8, invalidUTF8Limits, invalidUTF8Budget); err != nil {
+		t.Fatalf("addStructuredString(invalid UTF-8 exact limit) error = %v", err)
+	}
+	if invalidUTF8Budget.bytes != len(encodedInvalidUTF8) {
+		t.Fatalf("addStructuredString(invalid UTF-8 exact limit) budget = %d, want %d", invalidUTF8Budget.bytes, len(encodedInvalidUTF8))
+	}
+	invalidUTF8Limits.MaxStructuredBytes--
+	invalidUTF8Budget = &structuredBudget{}
+	assertContextLimit(t, addStructuredString(invalidUTF8, invalidUTF8Limits, invalidUTF8Budget))
+	if invalidUTF8Budget.bytes != 0 {
+		t.Fatalf("addStructuredString(invalid UTF-8 rejected) budget = %d, want atomic rejection", invalidUTF8Budget.bytes)
+	}
+
+	assertStructuredBoundary := func(t *testing.T, value any, exactPreflightBytes int) {
+		t.Helper()
+		expected, err := json.Marshal(value)
+		if err != nil {
+			t.Fatalf("json.Marshal(%T) error = %v", value, err)
+		}
+		limits := defaults
+		limits.MaxStructuredBytes = exactPreflightBytes
+		fact, err := mapFactWithLimits(value, limits)
+		if err != nil {
+			t.Fatalf("mapFactWithLimits(%T exact limit) error = %v", value, err)
+		}
+		actual, ok := fact.Structured()
+		if !ok || string(actual) != string(expected) {
+			t.Fatalf("mapFactWithLimits(%T exact limit) = (%q, %t), want (%q, true)", value, actual, ok, expected)
+		}
+		limits.MaxStructuredBytes--
+		assertContextLimit(t, func() error {
+			_, err := mapFactWithLimits(value, limits)
+
+			return err
+		}())
+	}
+	assertStructuredBoundary(t, []any{invalidUTF8}, 2+len(encodedInvalidUTF8))
+	assertStructuredBoundary(t, map[string]any{invalidUTF8: []any{}}, len(encodedInvalidUTF8)+6)
+
 	stringLimits.MaxStructuredBytes = 2
 	exactLengthBudget := &structuredBudget{}
 	encoded := false
