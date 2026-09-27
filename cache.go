@@ -69,11 +69,11 @@ func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, 
 		if limit <= 0 {
 			return nil, fmt.Errorf("provider tenant byte bound must be positive")
 		}
-		if config.MaxTenantBytes == 0 || config.MaxTenantBytes > limit {
+		if config.MaxTenantBytes == 0 {
 			config.MaxTenantBytes = limit
 		}
-	}
-	if config.MaxTenantBytes == 0 {
+		config.MaxTenantBytes = min(config.MaxTenantBytes, limit)
+	} else if config.MaxTenantBytes == 0 {
 		return nil, fmt.Errorf("cache tenant byte bound is required for this provider")
 	}
 	if config.MaxFeaturesPerTenant <= 0 {
