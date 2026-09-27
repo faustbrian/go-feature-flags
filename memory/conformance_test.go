@@ -3,8 +3,8 @@ package memory_test
 import (
 	"testing"
 
-	featureflags "github.com/faustbrian/go-feature-flags"
-	"github.com/faustbrian/go-feature-flags/featureflagstest"
+	featureflags "github.com/faustbrian/go-feature-flags/v2"
+	"github.com/faustbrian/go-feature-flags/v2/featureflagstest"
 )
 
 func TestProviderConformance(t *testing.T) {

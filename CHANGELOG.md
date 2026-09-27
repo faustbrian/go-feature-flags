@@ -5,6 +5,20 @@ Versioning.
 
 ## Unreleased
 
+### Breaking changes
+
+- Move the root module and all public package imports to
+  `github.com/faustbrian/go-feature-flags/v2` and require Go 1.27.0.
+- Require an explicit positive `CacheConfig.MaxTenantBytes` when the wrapped
+  provider does not expose a positive `TenantByteLimit()`. Built-in providers
+  and nested caches expose their limit; a cache cannot relax that limit.
+- Keep rejection of custom structured encoders and nested `json.RawMessage`
+  rather than restoring these formerly accepted v1 inputs. Migration guidance
+  is in [docs/migration.md](docs/migration.md). Stored document formats remain
+  unchanged.
+
+The prepared 1.0.1 release was not published and is superseded by this major.
+
 ### Security
 
 - Reject oversized tenant partitions before memory retention, cache lookup, or

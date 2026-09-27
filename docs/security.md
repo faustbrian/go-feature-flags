@@ -1,6 +1,6 @@
 # Security model
 
-Version: 1.0 (2026-09-13). Owner: go-feature-flags maintainers.
+Version: 2.0 (2026-09-27). Owner: go-feature-flags maintainers.
 
 Feature definitions, imported tenant documents, evaluation contexts, and
 OpenFeature flattened contexts are attacker-controlled when applications pass
@@ -13,12 +13,16 @@ result.
 
 - Every native management and snapshot operation rejects an empty or
   over-limit tenant before retaining it or calling a durable backend.
+- Cache tenant keys use the wrapped provider's discoverable byte bound or a
+  caller-supplied positive `MaxTenantBytes`. Cache configuration may tighten,
+  but never relax, a discoverable provider bound. Unknown custom-provider
+  limits require explicit configuration rather than a hidden default.
 - Evaluation validates tenant binding, context counts, key and value sizes,
   structured JSON size, dependency depth, batch size, and diagnostic output.
 - The OpenFeature adapter validates its fixed tenant and flattened context
   before requesting a native snapshot. Structured values receive bounded
   depth, node, and encoded-size preflight before JSON encoding; cycles,
-  unsupported values, and custom JSON or text marshalers are rejected.
+  unsupported values, and custom JSON or text encoders are rejected.
   Typed-nil native providers are rejected at construction.
 - Imports, durable state, audit history, staged changes, cache tenant count,
   cache feature count, invalidation history, retries, and fleet concurrency

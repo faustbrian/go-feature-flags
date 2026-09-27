@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	featureflags "github.com/faustbrian/go-feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags/v2"
 	valkeygo "github.com/valkey-io/valkey-go"
 )
 

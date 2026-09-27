@@ -1,4 +1,4 @@
-module github.com/faustbrian/go-feature-flags
+module github.com/faustbrian/go-feature-flags/v2
 
 go 1.27.0
 

@@ -156,7 +156,7 @@ func TestCachedProviderFailClosedAndMutationErrorsPreserveState(t *testing.T) {
 	clock := &manualCacheClock{now: time.Now()}
 	cached, err := NewCachedProvider(native, CacheConfig{
 		Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
-		FailurePolicy: FailClosed, MaxTenants: 1,
+		FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatalf("NewCachedProvider() error = %v", err)

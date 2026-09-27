@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -21,11 +22,15 @@ const (
 )
 
 type CacheConfig struct {
-	Clock                CacheClock
-	MaxStaleness         time.Duration
-	MaxOutageStaleness   time.Duration
-	FailurePolicy        FailurePolicy
-	MaxTenants           int
+	Clock              CacheClock
+	MaxStaleness       time.Duration
+	MaxOutageStaleness time.Duration
+	FailurePolicy      FailurePolicy
+	MaxTenants         int
+	// MaxTenantBytes bounds tenant keys before cache access or delegation.
+	// Zero inherits a discoverable provider limit; custom providers without
+	// that capability require an explicit positive limit.
+	MaxTenantBytes       int
 	MaxFeaturesPerTenant int
 }
 
@@ -44,7 +49,7 @@ type CachedProvider struct {
 }
 
 func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, error) {
-	if provider == nil || config.Clock == nil {
+	if nilCacheProvider(provider) || config.Clock == nil {
 		return nil, fmt.Errorf("cache provider and clock are required")
 	}
 	if config.MaxStaleness <= 0 || config.MaxOutageStaleness < config.MaxStaleness {
@@ -55,6 +60,21 @@ func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, 
 	}
 	if config.MaxTenants <= 0 {
 		return nil, fmt.Errorf("cache tenant bound must be positive")
+	}
+	if config.MaxTenantBytes < 0 {
+		return nil, fmt.Errorf("cache tenant byte bound must be positive")
+	}
+	if bounded, ok := provider.(interface{ TenantByteLimit() int }); ok {
+		limit := bounded.TenantByteLimit()
+		if limit <= 0 {
+			return nil, fmt.Errorf("provider tenant byte bound must be positive")
+		}
+		if config.MaxTenantBytes == 0 || config.MaxTenantBytes > limit {
+			config.MaxTenantBytes = limit
+		}
+	}
+	if config.MaxTenantBytes == 0 {
+		return nil, fmt.Errorf("cache tenant byte bound is required for this provider")
 	}
 	if config.MaxFeaturesPerTenant <= 0 {
 		config.MaxFeaturesPerTenant = DefaultLimits().MaxFeatures
@@ -67,9 +87,25 @@ func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, 
 	}, nil
 }
 
+func nilCacheProvider(provider Provider) bool {
+	if provider == nil {
+		return true
+	}
+	value := reflect.ValueOf(provider)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
 func (provider *CachedProvider) Capabilities() Capabilities {
 	return provider.provider.Capabilities()
 }
+
+// TenantByteLimit returns the effective tenant-key limit enforced by this cache.
+func (provider *CachedProvider) TenantByteLimit() int { return provider.config.MaxTenantBytes }
 
 func (provider *CachedProvider) Health(ctx context.Context) ProviderHealth {
 	return provider.provider.Health(ctx)
@@ -84,7 +120,7 @@ func (provider *CachedProvider) Close(ctx context.Context) error {
 }
 
 func (provider *CachedProvider) Snapshot(ctx context.Context, tenant string) (Snapshot, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Snapshot{}, err
 	}
 	now := provider.config.Clock.Now()
@@ -108,7 +144,7 @@ func (provider *CachedProvider) Snapshot(ctx context.Context, tenant string) (Sn
 
 // Refresh synchronously replaces one cached tenant snapshot.
 func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Snapshot, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Snapshot{}, err
 	}
 	snapshot, err := provider.provider.Snapshot(ctx, tenant)
@@ -130,7 +166,7 @@ func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Sna
 }
 
 func (provider *CachedProvider) Create(ctx context.Context, tenant string, definition Definition, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Create(ctx, tenant, definition, actor)
@@ -139,7 +175,7 @@ func (provider *CachedProvider) Create(ctx context.Context, tenant string, defin
 }
 
 func (provider *CachedProvider) Update(ctx context.Context, tenant string, definition Definition, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Update(ctx, tenant, definition, expected, actor)
@@ -148,7 +184,7 @@ func (provider *CachedProvider) Update(ctx context.Context, tenant string, defin
 }
 
 func (provider *CachedProvider) Activate(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Activate(ctx, tenant, key, expected, actor)
@@ -157,7 +193,7 @@ func (provider *CachedProvider) Activate(ctx context.Context, tenant, key string
 }
 
 func (provider *CachedProvider) Deactivate(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Deactivate(ctx, tenant, key, expected, actor)
@@ -166,7 +202,7 @@ func (provider *CachedProvider) Deactivate(ctx context.Context, tenant, key stri
 }
 
 func (provider *CachedProvider) Delete(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Delete(ctx, tenant, key, expected, actor)
@@ -175,7 +211,7 @@ func (provider *CachedProvider) Delete(ctx context.Context, tenant, key string, 
 }
 
 func (provider *CachedProvider) Restore(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.Restore(ctx, tenant, key, expected, actor)
@@ -184,7 +220,7 @@ func (provider *CachedProvider) Restore(ctx context.Context, tenant, key string,
 }
 
 func (provider *CachedProvider) CreateGroup(ctx context.Context, tenant string, group GroupDefinition, actor string) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	result, err := provider.provider.CreateGroup(ctx, tenant, group, actor)
@@ -193,7 +229,7 @@ func (provider *CachedProvider) CreateGroup(ctx context.Context, tenant string, 
 }
 
 func (provider *CachedProvider) UpdateGroup(ctx context.Context, tenant string, group GroupDefinition, expected uint64, actor string) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	result, err := provider.provider.UpdateGroup(ctx, tenant, group, expected, actor)
@@ -202,7 +238,7 @@ func (provider *CachedProvider) UpdateGroup(ctx context.Context, tenant string, 
 }
 
 func (provider *CachedProvider) DeleteGroup(ctx context.Context, tenant, groupKey string, expected uint64, actor string) (GroupDefinition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
 	}
 	result, err := provider.provider.DeleteGroup(ctx, tenant, groupKey, expected, actor)
@@ -211,7 +247,7 @@ func (provider *CachedProvider) DeleteGroup(ctx context.Context, tenant, groupKe
 }
 
 func (provider *CachedProvider) AssignGroup(ctx context.Context, tenant, featureKey, groupKey string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.AssignGroup(ctx, tenant, featureKey, groupKey, expected, actor)
@@ -220,7 +256,7 @@ func (provider *CachedProvider) AssignGroup(ctx context.Context, tenant, feature
 }
 
 func (provider *CachedProvider) RemoveGroup(ctx context.Context, tenant, featureKey, groupKey string, expected uint64, actor string) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.RemoveGroup(ctx, tenant, featureKey, groupKey, expected, actor)
@@ -229,7 +265,7 @@ func (provider *CachedProvider) RemoveGroup(ctx context.Context, tenant, feature
 }
 
 func (provider *CachedProvider) Audit(ctx context.Context, tenant, key string) ([]AuditEntry, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
 	}
 
@@ -237,7 +273,7 @@ func (provider *CachedProvider) Audit(ctx context.Context, tenant, key string) (
 }
 
 func (provider *CachedProvider) ExportDocument(ctx context.Context, tenant string) ([]byte, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
 	}
 
@@ -245,7 +281,7 @@ func (provider *CachedProvider) ExportDocument(ctx context.Context, tenant strin
 }
 
 func (provider *CachedProvider) ImportDocument(ctx context.Context, tenant string, data []byte, options ImportOptions, actor string) (ImportReport, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return ImportReport{}, err
 	}
 	report, err := provider.provider.ImportDocument(ctx, tenant, data, options, actor)
@@ -263,7 +299,7 @@ func (provider *CachedProvider) StageUpdate(
 	applyAt time.Time,
 	actor string,
 ) (StagedChange, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return StagedChange{}, err
 	}
 
@@ -276,7 +312,7 @@ func (provider *CachedProvider) ApplyStage(
 	id uint64,
 	actor string,
 ) (Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
 	}
 	result, err := provider.provider.ApplyStage(ctx, tenant, id, actor)
@@ -291,7 +327,7 @@ func (provider *CachedProvider) ApplyScheduled(
 	now time.Time,
 	actor string,
 ) ([]Definition, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
 	}
 	result, err := provider.provider.ApplyScheduled(ctx, tenant, now, actor)
@@ -303,7 +339,7 @@ func (provider *CachedProvider) ApplyScheduled(
 }
 
 func (provider *CachedProvider) StagedChanges(ctx context.Context, tenant string) ([]StagedChange, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
 	}
 
@@ -315,7 +351,7 @@ func (provider *CachedProvider) Cleanup(
 	tenant string,
 	options CleanupOptions,
 ) (CleanupReport, error) {
-	if err := providerInput(ctx, tenant, DefaultLimits().MaxKeyBytes); err != nil {
+	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return CleanupReport{}, err
 	}
 	report, err := provider.provider.Cleanup(ctx, tenant, options)

@@ -123,6 +123,129 @@ func (*countingAllProvider) Health(context.Context) ProviderHealth {
 }
 func (*countingAllProvider) Close(context.Context) error { return nil }
 
+func TestCachedProviderRequiresDiscoverableOrExplicitTenantByteLimit(t *testing.T) {
+	t.Parallel()
+
+	config := CacheConfig{
+		Clock:        &manualCacheClock{now: time.Unix(1700000000, 0)},
+		MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+		FailurePolicy: FailClosed, MaxTenants: 1,
+	}
+	if _, err := NewCachedProvider(&countingAllProvider{}, config); err == nil {
+		t.Fatal("custom provider without a discoverable tenant-byte limit was accepted")
+	}
+
+	limits := DefaultLimits()
+	limits.MaxKeyBytes *= 2
+	cached, err := NewCachedProvider(NewMemoryProvider(limits), config)
+	if err != nil {
+		t.Fatalf("native provider construction: %v", err)
+	}
+	if _, err := cached.Snapshot(t.Context(), strings.Repeat("t", DefaultLimits().MaxKeyBytes+1)); err != nil {
+		t.Fatalf("tenant inside the native provider's configured limit was rejected: %v", err)
+	}
+}
+
+func TestCachedProviderRejectsTypedNilBeforeLimitDiscovery(t *testing.T) {
+	t.Parallel()
+
+	var memory *MemoryProvider
+	var durable *DurableProvider
+	var cache *CachedProvider
+	for _, native := range []Provider{memory, durable, cache} {
+		if _, err := NewCachedProvider(native, CacheConfig{
+			Clock:        &manualCacheClock{now: time.Unix(1700000000, 0)},
+			MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+			FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: 4,
+		}); err == nil {
+			t.Fatalf("accepted typed-nil provider %T", native)
+		}
+	}
+	if _, err := NewCachedProvider(struct{ Provider }{NewMemoryProvider(DefaultLimits())}, CacheConfig{
+		Clock:        &manualCacheClock{now: time.Unix(1700000000, 0)},
+		MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+		FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: 4,
+	}); err != nil {
+		t.Fatalf("rejected non-pointer provider: %v", err)
+	}
+}
+
+func TestCachedProviderTenantByteLimitBoundaries(t *testing.T) {
+	t.Parallel()
+
+	clock := &manualCacheClock{now: time.Unix(1700000000, 0)}
+	for _, limit := range []int{-1, 0} {
+		invalid := DefaultLimits()
+		invalid.MaxKeyBytes = limit
+		if _, err := NewCachedProvider(NewMemoryProvider(invalid), CacheConfig{
+			Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+			FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: 4,
+		}); err == nil {
+			t.Fatalf("accepted discoverable invalid tenant byte limit %d", limit)
+		}
+	}
+	for _, limit := range []int{-1, 0, 4} {
+		native := &countingAllProvider{}
+		cached, err := NewCachedProvider(native, CacheConfig{
+			Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+			FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: limit,
+		})
+		if limit <= 0 {
+			if err == nil {
+				t.Fatalf("accepted custom provider tenant byte limit %d", limit)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cached.Refresh(t.Context(), "four"); err != nil {
+			t.Fatalf("exact byte limit rejected: %v", err)
+		}
+		if native.calls != 1 || len(cached.entries) != 1 {
+			t.Fatalf("exact-limit refresh calls=%d entries=%d", native.calls, len(cached.entries))
+		}
+		if _, err := cached.Refresh(t.Context(), "éé"); err != nil {
+			t.Fatalf("exact multibyte byte limit rejected: %v", err)
+		}
+		if _, err := cached.Snapshot(t.Context(), "five!"); !errors.Is(err, ErrContextLimit) {
+			t.Fatalf("over-limit snapshot error=%v", err)
+		}
+		if _, err := cached.Snapshot(t.Context(), "ééx"); !errors.Is(err, ErrContextLimit) {
+			t.Fatalf("multibyte byte overflow error=%v", err)
+		}
+		if native.calls != 2 || len(cached.entries) != 1 {
+			t.Fatal("oversized key reached provider or changed cache retention")
+		}
+	}
+
+	limits := DefaultLimits()
+	limits.MaxKeyBytes = 4
+	for _, limit := range []int{0, 2, 8} {
+		cached, err := NewCachedProvider(NewDurableProvider(&countingDocumentBackend{}, limits), CacheConfig{
+			Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+			FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: limit,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := 4
+		if limit == 2 {
+			want = 2
+		}
+		if cached.TenantByteLimit() != want {
+			t.Fatalf("effective tenant byte limit=%d want=%d", cached.TenantByteLimit(), want)
+		}
+		outer, err := NewCachedProvider(cached, CacheConfig{
+			Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: time.Minute,
+			FailurePolicy: FailClosed, MaxTenants: 1,
+		})
+		if err != nil || outer.TenantByteLimit() != want {
+			t.Fatalf("nested cache limit inheritance error=%v", err)
+		}
+	}
+}
+
 func (provider *countingSnapshotProvider) Snapshot(ctx context.Context, tenant string) (Snapshot, error) {
 	provider.snapshots++
 	return provider.Provider.Snapshot(ctx, tenant)
@@ -169,6 +292,7 @@ func TestProvidersRejectOversizedTenantBeforeRetentionOrStorage(t *testing.T) {
 		MaxOutageStaleness: time.Minute,
 		FailurePolicy:      FailClosed,
 		MaxTenants:         1,
+		MaxTenantBytes:     DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatalf("NewCachedProvider() error = %v", err)
@@ -191,12 +315,13 @@ func TestCachedProviderRejectsOversizedTenantBeforeEveryDelegation(t *testing.T)
 		MaxOutageStaleness:   time.Minute,
 		FailurePolicy:        FailClosed,
 		MaxTenants:           1,
+		MaxTenantBytes:       4,
 		MaxFeaturesPerTenant: 1,
 	})
 	if err != nil {
 		t.Fatalf("NewCachedProvider() error = %v", err)
 	}
-	tenant := strings.Repeat("t", DefaultLimits().MaxKeyBytes+1)
+	tenant := "five!"
 	operations := map[string]func() error{
 		"snapshot": func() error { _, err := cached.Snapshot(t.Context(), tenant); return err },
 		"refresh":  func() error { _, err := cached.Refresh(t.Context(), tenant); return err },

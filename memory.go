@@ -46,6 +46,9 @@ func (*MemoryProvider) Capabilities() Capabilities {
 	}
 }
 
+// TenantByteLimit returns the configured tenant-key byte limit.
+func (p *MemoryProvider) TenantByteLimit() int { return p.limits.MaxKeyBytes }
+
 func (*MemoryProvider) Health(ctx context.Context) ProviderHealth {
 	if ctx.Err() != nil {
 		return ProviderHealth{Code: "context_cancelled"}

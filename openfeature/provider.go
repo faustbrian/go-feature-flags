@@ -13,9 +13,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"unicode/utf8"
 
-	featureflags "github.com/faustbrian/go-feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags/v2"
 	of "github.com/open-feature/go-sdk/openfeature"
 )
 
@@ -296,15 +295,10 @@ func (provider *Provider) validateContextShape(flat of.FlattenedContext, limits 
 		}
 		switch key {
 		case string(of.TargetingKey), "environment":
-			text, ok := value.(string)
-			if !ok {
-				continue
-			}
-			if len(text) > limits.MaxContextValueBytes {
+			if text, ok := value.(string); ok && len(text) > limits.MaxContextValueBytes {
 				return fmt.Errorf("context identity exceeds %d bytes: %w", limits.MaxContextValueBytes, featureflags.ErrContextLimit)
 			}
 		case "tenant", "time":
-			continue
 		default:
 			facts++
 			if _, ok := value.(string); ok {
@@ -324,6 +318,14 @@ func mapFact(value any) (featureflags.Value, error) {
 }
 
 func mapFactWithLimits(value any, limits featureflags.Limits) (featureflags.Value, error) {
+	return mapFactWithLimitsAndMarshal(value, limits, json.Marshal)
+}
+
+func mapFactWithLimitsAndMarshal(
+	value any,
+	limits featureflags.Limits,
+	marshal func(any) ([]byte, error),
+) (featureflags.Value, error) {
 	switch typed := value.(type) {
 	case bool:
 		return featureflags.BooleanValue(typed), nil
@@ -377,7 +379,7 @@ func mapFactWithLimits(value any, limits featureflags.Limits) (featureflags.Valu
 		if err := validateStructuredInput(value, limits, 0, &structuredBudget{}); err != nil {
 			return featureflags.Value{}, err
 		}
-		encoded, err := json.Marshal(value)
+		encoded, err := marshal(value)
 		if err != nil {
 			return featureflags.Value{}, fmt.Errorf("encode structured fact: %w", err)
 		}
@@ -482,7 +484,7 @@ func validateStructuredValue(value reflect.Value, limits featureflags.Limits, de
 			}
 			groups := value.Len() / 3
 			if groups > limits.MaxStructuredBytes/4 {
-				return fmt.Errorf("structured fact exceeds %d input bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
+				return fmt.Errorf("structured byte slice encoding exceeds %d bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
 			}
 			if err := addStructuredBytes(groups*4, limits, budget); err != nil {
 				return err
@@ -561,31 +563,24 @@ func enterStructuredValue(value reflect.Value, budget *structuredBudget) (func()
 }
 
 func addStructuredString(value string, limits featureflags.Limits, budget *structuredBudget) error {
+	return addStructuredStringWithEncoder(value, limits, budget, func(value string) []byte {
+		encoded, _ := json.Marshal(value)
+
+		return encoded
+	})
+}
+
+func addStructuredStringWithEncoder(
+	value string,
+	limits featureflags.Limits,
+	budget *structuredBudget,
+	encode func(string) []byte,
+) error {
 	if len(value) > limits.MaxStructuredBytes {
 		return fmt.Errorf("structured fact exceeds %d input bytes: %w", limits.MaxStructuredBytes, featureflags.ErrContextLimit)
 	}
-	if err := addStructuredBytes(2, limits, budget); err != nil {
-		return err
-	}
-	for len(value) > 0 {
-		runeValue, size := utf8.DecodeRuneInString(value)
-		encodedBytes := size
-		switch {
-		case runeValue == utf8.RuneError && size == 1:
-			encodedBytes = 6
-		case runeValue < 0x20 || runeValue == '<' || runeValue == '>' || runeValue == '&' ||
-			runeValue == '\u2028' || runeValue == '\u2029':
-			encodedBytes = 6
-		case runeValue == '"' || runeValue == '\\':
-			encodedBytes = 2
-		}
-		if err := addStructuredBytes(encodedBytes, limits, budget); err != nil {
-			return err
-		}
-		value = value[size:]
-	}
 
-	return nil
+	return addStructuredBytes(len(encode(value)), limits, budget)
 }
 
 func addStructuredBytes(count int, limits featureflags.Limits, budget *structuredBudget) error {

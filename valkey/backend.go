@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	featureflags "github.com/faustbrian/go-feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags/v2"
 )
 
 // Transport is the small atomic Valkey contract used by the provider.

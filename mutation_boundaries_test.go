@@ -313,7 +313,7 @@ func TestCachedProviderEnforcesFreshOutageAndCapacityBoundaries(t *testing.T) {
 	clock := &manualCacheClock{now: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)}
 	cached, err := NewCachedProvider(underlying, CacheConfig{
 		Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: 2 * time.Minute,
-		FailurePolicy: FailOpen, MaxTenants: 2,
+		FailurePolicy: FailOpen, MaxTenants: 2, MaxTenantBytes: DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +323,7 @@ func TestCachedProviderEnforcesFreshOutageAndCapacityBoundaries(t *testing.T) {
 	}
 	freshClosed, err := NewCachedProvider(underlying, CacheConfig{
 		Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: 2 * time.Minute,
-		FailurePolicy: FailClosed, MaxTenants: 1,
+		FailurePolicy: FailClosed, MaxTenants: 1, MaxTenantBytes: DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -347,7 +347,7 @@ func TestCachedProviderEnforcesFreshOutageAndCapacityBoundaries(t *testing.T) {
 	}
 	closed, err := NewCachedProvider(underlying, CacheConfig{
 		Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: 2 * time.Minute,
-		FailurePolicy: FailClosed, MaxTenants: 2,
+		FailurePolicy: FailClosed, MaxTenants: 2, MaxTenantBytes: DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatal(err)

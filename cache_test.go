@@ -38,7 +38,7 @@ func TestCachedProviderFailOpenIsBoundedByOutageStaleness(t *testing.T) {
 	clock := &manualCacheClock{now: time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)}
 	cached, err := NewCachedProvider(underlying, CacheConfig{
 		Clock: clock, MaxStaleness: time.Minute, MaxOutageStaleness: 5 * time.Minute,
-		FailurePolicy: FailOpen, MaxTenants: 10,
+		FailurePolicy: FailOpen, MaxTenants: 10, MaxTenantBytes: DefaultLimits().MaxKeyBytes,
 	})
 	if err != nil {
 		t.Fatalf("NewCachedProvider() error = %v", err)

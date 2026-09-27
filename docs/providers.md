@@ -30,6 +30,12 @@ failure, `FailOpen` may return a previous snapshot only until
 features per tenant are bounded, and deterministic oldest-entry eviction is
 used. Successful mutations invalidate the affected tenant.
 
+Tenant keys are bounded in bytes before cache lookup or provider delegation.
+Set `CacheConfig.MaxTenantBytes` explicitly for custom providers, or expose a
+positive `TenantByteLimit() int` capability. Memory and durable providers and
+nested caches expose their effective bound. Zero inherits a discoverable bound;
+a positive explicit value may tighten but cannot relax that bound.
+
 Do not use fail-open for a flag whose stale enabled state would be unsafe.
 Feature flags remain unsuitable for authorization regardless of cache policy.
 

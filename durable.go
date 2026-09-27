@@ -32,6 +32,9 @@ func NewDurableProvider(backend DocumentBackend, limits Limits) *DurableProvider
 	return &DurableProvider{backend: backend, limits: limits}
 }
 
+// TenantByteLimit returns the configured tenant-key byte limit.
+func (p *DurableProvider) TenantByteLimit() int { return p.limits.MaxKeyBytes }
+
 func (*DurableProvider) Capabilities() Capabilities {
 	return Capabilities{
 		OptimisticConcurrency: true, AtomicMutations: true, Snapshots: true,

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	featureflags "github.com/faustbrian/go-feature-flags"
+	featureflags "github.com/faustbrian/go-feature-flags/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

@@ -5,7 +5,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-100%25_required-blue)](CONTRIBUTING.md#verification)
 [![Mutation](https://img.shields.io/badge/mutation-100%25_required-blue)](CONTRIBUTING.md#verification)
 [![Documentation](https://img.shields.io/badge/docs-checked_in_CI-blue)](docs/)
-[![Go Reference](https://pkg.go.dev/badge/github.com/faustbrian/go-feature-flags.svg)](https://pkg.go.dev/github.com/faustbrian/go-feature-flags)
+[![Go Reference](https://pkg.go.dev/badge/github.com/faustbrian/go-feature-flags/v2.svg)](https://pkg.go.dev/github.com/faustbrian/go-feature-flags/v2)
 [![Release](https://img.shields.io/github/v/release/faustbrian/go-feature-flags?sort=semver)](https://github.com/faustbrian/go-feature-flags/releases)
 [![Go](https://img.shields.io/badge/go-1.27.0-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -14,12 +14,16 @@ Deterministic, tenant-safe feature management and rollout evaluation for Go.
 The native API supports richer policies than OpenFeature; the OpenFeature
 provider is an optional interoperability adapter.
 
-This module is a stable v1 library and supports Go 1.27.0 or later.
+The v2 source requires Go 1.27.0 or later. Production code stays at the
+repository root on main; the `/v2` suffix is Go's major-version module identity,
+not a version-specific source directory or branch. Until v2 publication is
+verified, the published release remains v1.0.0 (Go 1.26.6).
 
 ## Installation
 
 ```sh
-go get github.com/faustbrian/go-feature-flags@v1
+# After v2.0.0 is published:
+go get github.com/faustbrian/go-feature-flags/v2@v2.0.0
 ```
 
 ## Quick start
@@ -74,7 +78,7 @@ make cohesion
 The shared `golib` tool starts disposable PostgreSQL and Valkey fixtures for
 the declared integration gates. Run `make check` from the repository root.
 
-The minimum toolchain is Go 1.27.0.
+The minimum source toolchain is Go 1.27.0.
 
 ## License
 
