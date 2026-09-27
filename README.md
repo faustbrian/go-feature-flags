@@ -16,8 +16,9 @@ provider is an optional interoperability adapter.
 
 The v2 source requires Go 1.27.0 or later. Production code stays at the
 repository root on main; the `/v2` suffix is Go's major-version module identity,
-not a version-specific source directory or branch. Until v2 publication is
-verified, the published release remains v1.0.0 (Go 1.26.6).
+not a version-specific source directory or branch. The legacy v1.0.0 release
+supports Go 1.26.6. The installation command below requires published v2
+artifacts; preparing the source does not itself publish a release.
 
 ## Installation
 

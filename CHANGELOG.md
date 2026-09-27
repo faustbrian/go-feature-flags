@@ -3,7 +3,7 @@
 All notable changes are documented here. The project follows Semantic
 Versioning.
 
-## Unreleased
+## 2.0.0 - 2026-09-27
 
 ### Breaking changes
 
@@ -26,6 +26,7 @@ The prepared 1.0.1 release was not published and is superseded by this major.
   snapshot loading or structured JSON encoding.
 - Reject typed-nil native OpenFeature providers and unbounded custom structured
   encoders, and document the package threat model and accepted residual risks.
+- Reject typed-nil cache providers before tenant-limit discovery.
 
 ### Changed
 
@@ -43,7 +44,7 @@ The prepared 1.0.1 release was not published and is superseded by this major.
 
 ### Documentation
 
-- State the stable-v1 and supported-Go contract, provide a compiler-checked
+- State the supported-Go contract, provide a compiler-checked
   quick start, and expose migration, support, troubleshooting, security, and
   license entry points.
 - Validate the current verification guide instead of the removed hardening
