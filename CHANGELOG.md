@@ -7,6 +7,10 @@ Versioning.
 
 ### Changed
 
+- Update the OpenFeature SDK to v1.18.0 while preserving the adapter's
+  fixed-tenant evaluation, typed details, hooks, and native provider ownership.
+  SDK client/provider binding and event shutdown use the updated SDK;
+  applications continue to own SDK registration and lifecycle.
 - Update the PostgreSQL driver to PGX v5.11.0 while retaining the adapter's
   public DB interface, storage schema, and caller-owned pool lifecycle.
 - Review application-owned pool configuration for PGX's libpq-aligned
