@@ -3,6 +3,17 @@
 All notable changes are documented here. The project follows Semantic
 Versioning.
 
+## Unreleased
+
+### Changed
+
+- Update the PostgreSQL driver to PGX v5.11.0 while retaining the adapter's
+  public DB interface, storage schema, and caller-owned pool lifecycle.
+- Review application-owned pool configuration for PGX's libpq-aligned
+  connection-string parsing and HOME-based Unix defaults. URI `+` values are
+  now literal, repeated parameters use the last value, mixed host/port lists
+  are positionally aligned, and keyword values must escape backslashes.
+
 ## 2.0.0 - 2026-09-27
 
 ### Breaking changes
