@@ -24,6 +24,7 @@ func Bucket(seed, featureKey, tenant, subject string) uint32 {
 
 func writeBucketPart(digest hash.Hash, part string) {
 	var length [4]byte
+	// #nosec G115 -- v1 framing deliberately encodes the low 32 length bits; the full string is still hashed
 	binary.BigEndian.PutUint32(length[:], uint32(len(part)))
 	_, _ = digest.Write(length[:])
 	_, _ = digest.Write([]byte(part))

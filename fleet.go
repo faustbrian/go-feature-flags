@@ -202,7 +202,9 @@ func (DeterministicFleetJitter) Delay(replica string, sequence uint64, maximum t
 	binary.BigEndian.PutUint64(encoded[:], sequence)
 	_, _ = hash.Write(encoded[:])
 	sum := hash.Sum(nil)
+	// #nosec G115 -- negative maximum is rejected above; time.Duration is at most MaxInt64
 	value := binary.BigEndian.Uint64(sum[:8]) % (uint64(maximum) + 1)
+	// #nosec G115 -- the modulo result is in [0, maximum], within the duration range
 	return time.Duration(value), nil
 }
 
@@ -604,6 +606,7 @@ func (fleet *Fleet) load(ctx context.Context) (SnapshotCandidate, error) {
 	defer cancel()
 	var calls atomic.Uint64
 	operation := func(operationCtx context.Context) (SnapshotCandidate, error) {
+		// #nosec G115 -- NewFleet validates and copies MaxProviderLoads in [1, 1024]
 		if calls.Add(1) > uint64(fleet.config.MaxProviderLoads) {
 			return SnapshotCandidate{}, ErrRefreshLoadLimit
 		}

@@ -593,6 +593,7 @@ func addStructuredBytes(count int, limits featureflags.Limits, budget *structure
 }
 
 func mapDetail(variant string, reason featureflags.Reason, strategy string, version uint64) of.ProviderResolutionDetail {
+	// #nosec G115 -- values above MaxInt64 are replaced with their decimal string before observation
 	var versionMetadata any = int64(version)
 	if version > math.MaxInt64 {
 		versionMetadata = strconv.FormatUint(version, 10)
