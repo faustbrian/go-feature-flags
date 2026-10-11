@@ -30,8 +30,12 @@ The language-neutral bucketing fixture at `testdata/bucketing-v1.json` freezes
 the complete digest and bucket, not only an implementation-specific result. It
 includes UTF-8, empty input, tenant separation, and length-framing ambiguity.
 
-From the repository root, `make ci` runs the repository contract and the
-canonical gate list through the pinned `go-library-tools` release, including
+From the repository root, `make check` and `make ci` run the bounded contract
+through the published `go-library-tools` release pinned in `.golib.yaml`.
+The targeted root race checks concurrent evaluation/activation/invalidation and
+shutdown joining bootstrap/cache work without late starts. Base-free checks
+run seeds/corpus; changed-source CI selects causal active fuzz smoke.
+`make check-full` retains the canonical full gate list, including
 exact coverage and exhaustive mutation, race, fuzz, provider, API,
 documentation, benchmark, vulnerability, secret, license, and SBOM checks.
 The declared PostgreSQL and Valkey fixtures are started by the shared tool.

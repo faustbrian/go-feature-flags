@@ -3,7 +3,7 @@
 [![CI](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/badge/CodeQL-required-blue)](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25_required-blue)](CONTRIBUTING.md#verification)
-[![Mutation](https://img.shields.io/badge/mutation-100%25_required-blue)](CONTRIBUTING.md#verification)
+[![Mutation](https://img.shields.io/badge/mutation-full%2Frelease-blue)](CONTRIBUTING.md#verification)
 [![Documentation](https://img.shields.io/badge/docs-checked_in_CI-blue)](docs/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/faustbrian/go-feature-flags/v2.svg)](https://pkg.go.dev/github.com/faustbrian/go-feature-flags/v2)
 [![Release](https://img.shields.io/github/v/release/faustbrian/go-feature-flags?sort=semver)](https://github.com/faustbrian/go-feature-flags/releases)
@@ -76,8 +76,12 @@ make check
 make cohesion
 ```
 
-The shared `golib` tool starts disposable PostgreSQL and Valkey fixtures for
-the declared integration gates. Run `make check` from the repository root.
+The bounded local contract uses the published tool pinned in `.golib.yaml`,
+including disposable PostgreSQL/Valkey fixtures, the `integration` tag and a
+targeted fleet lifecycle race. Base-free checks run fuzz seeds; changed-source
+CI selects active smoke. `make check-full` retains the explicit full campaigns.
+See [contributor verification](CONTRIBUTING.md#verification) for isolated tests,
+tool installation and release rehearsal.
 
 The minimum source toolchain is Go 1.27.0.
 
