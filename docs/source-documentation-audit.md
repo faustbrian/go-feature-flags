@@ -96,3 +96,12 @@ complete Tier A diff receives ordinary truth/usefulness inspection and a pinned
 changed/staged secret scan before commit. No service, race/leak, active fuzz,
 performance, release rehearsal or new standards/security verdict is established.
 Remote main and exact-source hosted CI remain coordinator-owned.
+
+## Objective Enforcement
+
+The checksum-pinned public Tools v2.4.0 verifier now supplies
+`make source-docs-check` as a prerequisite of the existing local and CI Make
+routes. Ordinary shared CI selects strict source-documentation checking and
+requires its result. Native prerequisites, operation budgets, security and
+release controls are retained. Hosted exact-head evidence is recorded by the
+coordination ledger; configuration alone does not establish green delivery.
