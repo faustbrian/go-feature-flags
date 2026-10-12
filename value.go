@@ -14,15 +14,23 @@ var decimalPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`)
 type Type string
 
 const (
-	TypeBoolean    Type = "boolean"
-	TypeString     Type = "string"
-	TypeInteger    Type = "integer"
-	TypeFloat      Type = "float"
-	TypeDecimal    Type = "decimal"
+	// TypeBoolean identifies boolean values without coercion.
+	TypeBoolean Type = "boolean"
+	// TypeString identifies string values without coercion.
+	TypeString Type = "string"
+	// TypeInteger identifies integer values without coercion.
+	TypeInteger Type = "integer"
+	// TypeFloat identifies float values without coercion.
+	TypeFloat Type = "float"
+	// TypeDecimal identifies decimal values without coercion.
+	TypeDecimal Type = "decimal"
+	// TypeStructured identifies structured values without coercion.
 	TypeStructured Type = "structured"
 )
 
-// Value is an immutable, explicitly typed feature value.
+// Value is immutable typed data; zero has no valid type. Scalar constructors
+// do not validate size/finite/canonical form until definition/context validation.
+// StructuredValue copies bytes, and Structured returns a separate owned copy.
 type Value struct {
 	typ        Type
 	boolean    bool
@@ -32,16 +40,21 @@ type Value struct {
 	structured json.RawMessage
 }
 
+// BooleanValue constructs a boolean without coercion.
 func BooleanValue(value bool) Value { return Value{typ: TypeBoolean, boolean: value} }
 
+// StringValue constructs a string; bounds are validated when used in definitions/contexts.
 func StringValue(value string) Value { return Value{typ: TypeString, text: value} }
 
+// IntegerValue constructs a signed 64-bit integer without coercion.
 func IntegerValue(value int64) Value { return Value{typ: TypeInteger, integer: value} }
 
+// FloatValue constructs float data; later validation rejects nonfinite values.
 func FloatValue(value float64) Value { return Value{typ: TypeFloat, floating: value} }
 
 // DecimalValue stores a caller-supplied canonical decimal string without
-// introducing binary floating-point rounding.
+// introducing binary floating-point rounding. Validation accepts the decimal
+// grammar without exponents/leading zeroes, but does not normalize -0 or scale.
 func DecimalValue(value string) Value { return Value{typ: TypeDecimal, text: value} }
 
 // StructuredValue copies JSON bytes so later caller mutation cannot change an
@@ -50,6 +63,7 @@ func StructuredValue(value json.RawMessage) Value {
 	return Value{typ: TypeStructured, structured: append(json.RawMessage(nil), value...)}
 }
 
+// Type returns the stored type; a zero Value has no valid type.
 func (v Value) Type() Type { return v.typ }
 
 // Boolean returns the value and true only when its native type is boolean.

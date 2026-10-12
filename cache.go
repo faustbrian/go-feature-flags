@@ -10,27 +10,39 @@ import (
 )
 
 // CacheClock keeps cache freshness deterministic in tests and applications.
-type CacheClock interface{ Now() time.Time }
+type CacheClock interface {
+	// Now supplies bounded concurrent wall-clock time; rollback makes cache age zero.
+	Now() time.Time
+}
 
 // FailurePolicy controls whether a bounded cached snapshot may survive a
 // provider outage.
 type FailurePolicy uint8
 
 const (
+	// FailClosed propagates refresh errors rather than using expired cache entries.
 	FailClosed FailurePolicy = iota + 1
+	// FailOpen permits cached fallback only through MaxOutageStaleness.
 	FailOpen
 )
 
+// CacheConfig sets bounded retained snapshot policy, not total heap or remote consistency.
 type CacheConfig struct {
-	Clock              CacheClock
-	MaxStaleness       time.Duration
+	// Clock is retained and must support bounded concurrent calls.
+	Clock CacheClock
+	// MaxStaleness is the inclusive age for a cached hit.
+	MaxStaleness time.Duration
+	// MaxOutageStaleness is the inclusive fallback age under FailOpen, at least MaxStaleness.
 	MaxOutageStaleness time.Duration
-	FailurePolicy      FailurePolicy
-	MaxTenants         int
+	// FailurePolicy selects error propagation or bounded fallback; zero is invalid.
+	FailurePolicy FailurePolicy
+	// MaxTenants is the positive retained tenant count, not total process memory.
+	MaxTenants int
 	// MaxTenantBytes bounds tenant keys before cache access or delegation.
 	// Zero inherits a discoverable provider limit; custom providers without
 	// that capability require an explicit positive limit.
-	MaxTenantBytes       int
+	MaxTenantBytes int
+	// MaxFeaturesPerTenant bounds snapshot definitions; non-positive selects DefaultLimits.
 	MaxFeaturesPerTenant int
 }
 
@@ -40,7 +52,11 @@ type cachedSnapshot struct {
 }
 
 // CachedProvider adds explicit bounded-stale snapshots without a hidden
-// refresher. Refresh ownership remains with the caller.
+// refresher. Refresh ownership remains with the caller. Entries synchronize
+// memory access, not remote consistency: concurrent refreshes are not coalesced
+// or revision-fenced against each other/mutation invalidation. An earlier
+// provider read may be installed after a later successful mutation. Close
+// clears entries and delegates, but creates no closed admission state.
 type CachedProvider struct {
 	provider Provider
 	config   CacheConfig
@@ -48,6 +64,8 @@ type CachedProvider struct {
 	entries  map[string]cachedSnapshot
 }
 
+// NewCachedProvider validates cache bounds and retains provider/clock; no refresher is
+// started.
 func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, error) {
 	if nilCacheProvider(provider) || config.Clock == nil {
 		return nil, fmt.Errorf("cache provider and clock are required")
@@ -100,6 +118,7 @@ func nilCacheProvider(provider Provider) bool {
 	}
 }
 
+// Capabilities reports native management capabilities.
 func (provider *CachedProvider) Capabilities() Capabilities {
 	return provider.provider.Capabilities()
 }
@@ -107,10 +126,13 @@ func (provider *CachedProvider) Capabilities() Capabilities {
 // TenantByteLimit returns the effective tenant-key limit enforced by this cache.
 func (provider *CachedProvider) TenantByteLimit() int { return provider.config.MaxTenantBytes }
 
+// Health reports readiness without treating unavailability as a flag value.
 func (provider *CachedProvider) Health(ctx context.Context) ProviderHealth {
 	return provider.provider.Health(ctx)
 }
 
+// Close clears local entries and delegates Close; it does not prevent later
+// refresh/admission.
 func (provider *CachedProvider) Close(ctx context.Context) error {
 	provider.mu.Lock()
 	provider.entries = make(map[string]cachedSnapshot)
@@ -119,6 +141,8 @@ func (provider *CachedProvider) Close(ctx context.Context) error {
 	return provider.provider.Close(ctx)
 }
 
+// Snapshot returns an inclusive-age cached hit or refreshes; FailOpen masks errors only
+// within the outage bound.
 func (provider *CachedProvider) Snapshot(ctx context.Context, tenant string) (Snapshot, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Snapshot{}, err
@@ -142,7 +166,8 @@ func (provider *CachedProvider) Snapshot(ctx context.Context, tenant string) (Sn
 	return Snapshot{}, err
 }
 
-// Refresh synchronously replaces one cached tenant snapshot.
+// Refresh synchronously replaces one cached tenant snapshot. Concurrent calls
+// can install out of order; successful fetch time, not commit time, starts age.
 func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Snapshot, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Snapshot{}, err
@@ -165,6 +190,8 @@ func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Sna
 	return snapshot, nil
 }
 
+// Create creates a copied definition at version 1; existing tombstones also conflict.
+// Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) Create(ctx context.Context, tenant string, definition Definition, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -174,6 +201,8 @@ func (provider *CachedProvider) Create(ctx context.Context, tenant string, defin
 	return result, err
 }
 
+// Update replaces a live definition only at the expected version and increments it.
+// Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) Update(ctx context.Context, tenant string, definition Definition, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -183,6 +212,8 @@ func (provider *CachedProvider) Update(ctx context.Context, tenant string, defin
 	return result, err
 }
 
+// Activate sets a live definition active at its expected version. Successful writes
+// invalidate only this local tenant entry.
 func (provider *CachedProvider) Activate(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -192,6 +223,8 @@ func (provider *CachedProvider) Activate(ctx context.Context, tenant, key string
 	return result, err
 }
 
+// Deactivate sets a live definition inactive at its expected version. Successful writes
+// invalidate only this local tenant entry.
 func (provider *CachedProvider) Deactivate(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -201,6 +234,8 @@ func (provider *CachedProvider) Deactivate(ctx context.Context, tenant, key stri
 	return result, err
 }
 
+// Delete archives a live definition as a restorable tombstone at its expected version.
+// Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) Delete(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -210,6 +245,8 @@ func (provider *CachedProvider) Delete(ctx context.Context, tenant, key string, 
 	return result, err
 }
 
+// Restore restores a tombstone as inactive at its expected version. Successful writes
+// invalidate only this local tenant entry.
 func (provider *CachedProvider) Restore(ctx context.Context, tenant, key string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -219,6 +256,8 @@ func (provider *CachedProvider) Restore(ctx context.Context, tenant, key string,
 	return result, err
 }
 
+// CreateGroup creates a version 1 group after validating the combined graph. Successful
+// writes invalidate only this local tenant entry.
 func (provider *CachedProvider) CreateGroup(ctx context.Context, tenant string, group GroupDefinition, actor string) (GroupDefinition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
@@ -228,6 +267,8 @@ func (provider *CachedProvider) CreateGroup(ctx context.Context, tenant string, 
 	return result, err
 }
 
+// UpdateGroup replaces an expected-version group after validating its affected graph.
+// Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) UpdateGroup(ctx context.Context, tenant string, group GroupDefinition, expected uint64, actor string) (GroupDefinition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
@@ -237,6 +278,8 @@ func (provider *CachedProvider) UpdateGroup(ctx context.Context, tenant string, 
 	return result, err
 }
 
+// DeleteGroup removes an expected-version group only when unreferenced. Successful writes
+// invalidate only this local tenant entry.
 func (provider *CachedProvider) DeleteGroup(ctx context.Context, tenant, groupKey string, expected uint64, actor string) (GroupDefinition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return GroupDefinition{}, err
@@ -246,6 +289,8 @@ func (provider *CachedProvider) DeleteGroup(ctx context.Context, tenant, groupKe
 	return result, err
 }
 
+// AssignGroup appends a group to an expected-version feature; an existing assignment is
+// unchanged. Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) AssignGroup(ctx context.Context, tenant, featureKey, groupKey string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -255,6 +300,8 @@ func (provider *CachedProvider) AssignGroup(ctx context.Context, tenant, feature
 	return result, err
 }
 
+// RemoveGroup removes an existing assignment from an expected-version feature. Successful
+// writes invalidate only this local tenant entry.
 func (provider *CachedProvider) RemoveGroup(ctx context.Context, tenant, featureKey, groupKey string, expected uint64, actor string) (Definition, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Definition{}, err
@@ -264,6 +311,7 @@ func (provider *CachedProvider) RemoveGroup(ctx context.Context, tenant, feature
 	return result, err
 }
 
+// Audit returns owned retained entries for the resource key, not durable audit delivery.
 func (provider *CachedProvider) Audit(ctx context.Context, tenant, key string) ([]AuditEntry, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
@@ -272,6 +320,8 @@ func (provider *CachedProvider) Audit(ctx context.Context, tenant, key string) (
 	return provider.provider.Audit(ctx, tenant, key)
 }
 
+// ExportDocument returns owned portable bytes excluding tombstones, audit and staged
+// state.
 func (provider *CachedProvider) ExportDocument(ctx context.Context, tenant string) ([]byte, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
@@ -280,6 +330,7 @@ func (provider *CachedProvider) ExportDocument(ctx context.Context, tenant strin
 	return provider.provider.ExportDocument(ctx, tenant)
 }
 
+// ImportDocument delegates import and invalidates only successful non-dry-run changes.
 func (provider *CachedProvider) ImportDocument(ctx context.Context, tenant string, data []byte, options ImportOptions, actor string) (ImportReport, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return ImportReport{}, err
@@ -291,6 +342,7 @@ func (provider *CachedProvider) ImportDocument(ctx context.Context, tenant strin
 	return report, err
 }
 
+// StageUpdate copies a pending expected-version replacement without applying it.
 func (provider *CachedProvider) StageUpdate(
 	ctx context.Context,
 	tenant string,
@@ -306,6 +358,8 @@ func (provider *CachedProvider) StageUpdate(
 	return provider.provider.StageUpdate(ctx, tenant, definition, expected, applyAt, actor)
 }
 
+// ApplyStage atomically applies one pending replacement after rechecking its version.
+// Successful writes invalidate only this local tenant entry.
 func (provider *CachedProvider) ApplyStage(
 	ctx context.Context,
 	tenant string,
@@ -321,6 +375,7 @@ func (provider *CachedProvider) ApplyStage(
 	return result, err
 }
 
+// ApplyScheduled invalidates the tenant only after a successful nonempty application.
 func (provider *CachedProvider) ApplyScheduled(
 	ctx context.Context,
 	tenant string,
@@ -338,6 +393,7 @@ func (provider *CachedProvider) ApplyScheduled(
 	return result, err
 }
 
+// StagedChanges returns owned pending changes in ID order.
 func (provider *CachedProvider) StagedChanges(ctx context.Context, tenant string) ([]StagedChange, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return nil, err
@@ -346,6 +402,7 @@ func (provider *CachedProvider) StagedChanges(ctx context.Context, tenant string
 	return provider.provider.StagedChanges(ctx, tenant)
 }
 
+// Cleanup invalidates only after successful feature purging.
 func (provider *CachedProvider) Cleanup(
 	ctx context.Context,
 	tenant string,

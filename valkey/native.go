@@ -68,10 +68,13 @@ func (executor commandExecutor) ping(ctx context.Context) error {
 // NativeTransport adapts valkey-go without taking ownership of its lifecycle.
 type NativeTransport struct{ executor nativeExecutor }
 
+// NewNativeTransport retains an application-owned client without validation or opening
+// connections.
 func NewNativeTransport(client valkeygo.CommandClient) *NativeTransport {
 	return &NativeTransport{executor: commandExecutor{client: client}}
 }
 
+// Load loads one Lua hash reply and copies bytes; no read-size preflight is applied.
 func (transport *NativeTransport) Load(
 	ctx context.Context,
 	key string,
@@ -98,6 +101,8 @@ func (transport *NativeTransport) Load(
 	return append([]byte(nil), data...), uint64(revision), true, nil
 }
 
+// CompareAndSwap uses Lua numeric revision equality; stay within exact server-number
+// range.
 func (transport *NativeTransport) CompareAndSwap(
 	ctx context.Context,
 	key string,
@@ -113,6 +118,7 @@ func (transport *NativeTransport) CompareAndSwap(
 	return result == 1, nil
 }
 
+// Ping delegates readiness without owning client cleanup.
 func (transport *NativeTransport) Ping(ctx context.Context) error {
 	return transport.executor.ping(ctx)
 }

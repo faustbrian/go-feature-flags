@@ -91,7 +91,10 @@ type weeklyWire struct {
 }
 
 // Export encodes definitions and groups in a versioned deterministic JSON
-// format. Strategy order is preserved because it affects precedence.
+// format. Strategy order is preserved, but feature group attachments are sorted
+// and can change native precedence on round-trip. Only built-in value strategy
+// types serialize; custom strategies return ErrUnsupportedStrategy. JSON encoding
+// allocates before any durable MaxStateBytes check; Export has no output cap.
 func Export(definitions []Definition, groups []GroupDefinition, limits Limits) ([]byte, error) {
 	if _, err := NewSnapshotWithGroups(definitions, groups, limits); err != nil {
 		return nil, err
@@ -120,7 +123,10 @@ func Export(definitions []Definition, groups []GroupDefinition, limits Limits) (
 	return json.Marshal(document)
 }
 
-// Import decodes and validates a deterministic export document.
+// Import decodes and validates the version-1 go-feature-flags portable document.
+// Input bytes are bounded before decoding, not total heap/time. Unknown struct
+// fields/trailing documents fail; JSON duplicate fields retain encoding/json
+// semantics. The returned definitions/groups are caller-owned mutable data.
 func Import(data []byte, limits Limits) ([]Definition, []GroupDefinition, error) {
 	if len(data) > limits.MaxImportBytes {
 		return nil, nil, fmt.Errorf("import exceeds %d bytes: %w", limits.MaxImportBytes, ErrImportLimit)

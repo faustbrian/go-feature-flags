@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+// FuzzImportNeverPanics bounds hostile document bytes and checks parsing/validation
+// without a panic.
 func FuzzImportNeverPanics(f *testing.F) {
 	f.Add([]byte(`{"format":"go-feature-flags","version":1,"features":[]}`))
 	f.Add([]byte(`null`))
@@ -25,6 +27,8 @@ func FuzzImportNeverPanics(f *testing.F) {
 	})
 }
 
+// FuzzBucketIsStableAndBounded checks identical raw string inputs yield the same bucket
+// below 100000.
 func FuzzBucketIsStableAndBounded(f *testing.F) {
 	f.Add("seed", "flag", "tenant", "subject")
 	f.Add("", "", "", "")
@@ -41,6 +45,8 @@ func FuzzBucketIsStableAndBounded(f *testing.F) {
 	})
 }
 
+// FuzzDefinitionValidationNeverPanics bounds total input strings and evaluates only
+// validated definitions.
 func FuzzDefinitionValidationNeverPanics(f *testing.F) {
 	f.Add("flag", "control", "enabled", "alice")
 	f.Add("", "", "", "")
@@ -69,6 +75,8 @@ func FuzzDefinitionValidationNeverPanics(f *testing.F) {
 	})
 }
 
+// FuzzContextEvaluationNeverPanics exercises explicit identity, attribute and JSON fact
+// validation without panic.
 func FuzzContextEvaluationNeverPanics(f *testing.F) {
 	f.Add("tenant-a", "alice", "plan", "pro", []byte(`{"age":10}`))
 	f.Add("", "", "", "", []byte{0xff})
@@ -93,6 +101,8 @@ func FuzzContextEvaluationNeverPanics(f *testing.F) {
 	})
 }
 
+// FuzzFleetInvalidationHistoryIsDeterministicAndBounded checks retained stream/gap
+// bounds over two hints; it is not a delivery-determinism oracle.
 func FuzzFleetInvalidationHistoryIsDeterministicAndBounded(f *testing.F) {
 	f.Add("valkey", "next", uint64(1), uint64(2))
 	f.Add("", "", uint64(0), ^uint64(0))
@@ -274,6 +284,8 @@ func TestCachedProviderIsRaceSafeDuringRefreshUpdateAndShutdown(t *testing.T) {
 	}
 }
 
+// BenchmarkSnapshotBoolean measures one rollout lookup in a prebuilt 1000-feature
+// snapshot; setup is excluded.
 func BenchmarkSnapshotBoolean(b *testing.B) {
 	definitions := make([]Definition, 1_000)
 	for index := range definitions {
@@ -300,6 +312,8 @@ func BenchmarkSnapshotBoolean(b *testing.B) {
 	}
 }
 
+// BenchmarkSnapshotDeepDependencyChain measures evaluation through a prebuilt maximum-
+// depth dependency chain.
 func BenchmarkSnapshotDeepDependencyChain(b *testing.B) {
 	limits := DefaultLimits()
 	definitions := make([]Definition, limits.MaxEvaluationDepth+1)
@@ -332,6 +346,8 @@ func BenchmarkSnapshotDeepDependencyChain(b *testing.B) {
 	}
 }
 
+// BenchmarkSnapshotMaximumContextAndBatch measures a maximum-sized batch/context after
+// snapshot setup.
 func BenchmarkSnapshotMaximumContextAndBatch(b *testing.B) {
 	limits := DefaultLimits()
 	definitions := make([]Definition, limits.MaxBatchSize)
@@ -367,6 +383,8 @@ func BenchmarkSnapshotMaximumContextAndBatch(b *testing.B) {
 	}
 }
 
+// BenchmarkFleetBooleanFresh measures fresh-snapshot boolean evaluation without
+// provider IO.
 func BenchmarkFleetBooleanFresh(b *testing.B) {
 	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
 	loader := &fleetTestLoader{candidates: []SnapshotCandidate{{
@@ -393,6 +411,8 @@ func BenchmarkFleetBooleanFresh(b *testing.B) {
 	}
 }
 
+// BenchmarkFleetCurrentInvalidation measures already-current invalidation processing
+// without a provider refresh.
 func BenchmarkFleetCurrentInvalidation(b *testing.B) {
 	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
 	loader := &fleetTestLoader{candidates: []SnapshotCandidate{{

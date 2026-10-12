@@ -6,16 +6,25 @@ import (
 	"time"
 )
 
+// CleanupOptions selects explicit maintenance; zero fields preserve their corresponding
+// state.
 type CleanupOptions struct {
-	PurgeDeleted        bool
+	// PurgeDeleted permanently removes tombstones and their pending stages.
+	PurgeDeleted bool
+	// DiscardStagesBefore discards nonzero scheduled stages strictly before this time.
 	DiscardStagesBefore time.Time
-	KeepAudit           int
+	// KeepAudit retains the newest positive count; zero leaves audit unchanged.
+	KeepAudit int
 }
 
+// CleanupReport reports completed maintenance counts, not a durable external audit.
 type CleanupReport struct {
+	// DeletedFeatures counts permanently purged tombstones.
 	DeletedFeatures int
+	// DiscardedStages counts removed pending changes.
 	DiscardedStages int
-	DiscardedAudit  int
+	// DiscardedAudit counts removed oldest audit entries.
+	DiscardedAudit int
 }
 
 // Cleanup performs only explicitly selected, tenant-scoped maintenance.

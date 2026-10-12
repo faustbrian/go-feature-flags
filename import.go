@@ -9,34 +9,50 @@ import (
 type ConflictPolicy string
 
 const (
-	ConflictFail    ConflictPolicy = "fail"
-	ConflictSkip    ConflictPolicy = "skip"
+	// ConflictFail rejects applied imports with conflicts; dry-run still reports them.
+	ConflictFail ConflictPolicy = "fail"
+	// ConflictSkip retains existing resources while applying nonconflicting input.
+	ConflictSkip ConflictPolicy = "skip"
+	// ConflictReplace replaces existing resources with incremented provider versions.
 	ConflictReplace ConflictPolicy = "replace"
 )
 
 // ImportOptions controls dry-run and conflict behavior.
 type ImportOptions struct {
-	DryRun         bool
+	// DryRun plans without committing; conflicts can still be reported.
+	DryRun bool
+	// ConflictPolicy selects fail/skip/replace; empty defaults to ConflictFail.
 	ConflictPolicy ConflictPolicy
 }
 
 // ImportConflict describes an existing resource without exposing its value.
 type ImportConflict struct {
-	Resource        string
-	Key             string
-	CurrentVersion  uint64
+	// Resource identifies a feature or group conflict.
+	Resource string
+	// Key is the conflicting tenant-local feature or group identity.
+	Key string
+	// CurrentVersion is the retained provider version.
+	CurrentVersion uint64
+	// IncomingVersion is document metadata, not the assigned import version.
 	IncomingVersion uint64
 }
 
 // ImportReport summarizes an atomic import plan or application.
 type ImportReport struct {
-	DryRun          bool
+	// DryRun plans without committing; conflicts can still be reported.
+	DryRun bool
+	// CreatedFeatures counts planned new features.
 	CreatedFeatures int
+	// UpdatedFeatures counts planned feature replacements.
 	UpdatedFeatures int
-	CreatedGroups   int
-	UpdatedGroups   int
-	Skipped         int
-	Conflicts       []ImportConflict
+	// CreatedGroups counts planned new groups.
+	CreatedGroups int
+	// UpdatedGroups counts planned group replacements.
+	UpdatedGroups int
+	// Skipped counts existing resources not replaced.
+	Skipped int
+	// Conflicts is owned conflict metadata; inspect the accompanying error.
+	Conflicts []ImportConflict
 }
 
 type pendingAudit struct {
@@ -45,8 +61,8 @@ type pendingAudit struct {
 	version uint64
 }
 
-// ExportDocument returns a deterministic document for one tenant's active
-// feature and group state.
+// ExportDocument returns owned deterministic bytes for one tenant's non-deleted
+// features and groups, excluding tombstones, audit and staged changes.
 func (p *MemoryProvider) ExportDocument(ctx context.Context, tenant string) ([]byte, error) {
 	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err

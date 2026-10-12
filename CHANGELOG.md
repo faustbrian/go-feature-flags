@@ -7,6 +7,9 @@ Versioning.
 
 ### Changed
 
+- Clarify evaluation precedence, callback and snapshot ownership, cache/fleet
+  lifecycle, provider limits and portable document ordering without runtime changes.
+
 - Update the OpenFeature SDK to v1.18.0 while preserving the adapter's
   fixed-tenant evaluation, typed details, hooks, and native provider ownership.
   SDK client/provider binding and event shutdown use the updated SDK;

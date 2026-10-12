@@ -10,12 +10,14 @@ decimal flags are intentionally unavailable through this adapter. Native
 versions and matched strategy names are exposed as bounded metadata.
 
 OpenFeature targeting key maps to native subject. Flattened string fields map
-to attributes; supported scalar and structured values map to typed facts.
-The adapter applies native context count and size limits before loading a
+to attributes; supported scalar and structured values map to typed facts. The
+adapter applies native context count and size limits before loading a
 snapshot. Structured values receive bounded preflight before JSON encoding;
 cycles, unsupported values, and custom JSON or text encoders are rejected.
 Mapping does not mutate native strategy order, dependency behavior, group
-inheritance, snapshot semantics, or reasons.
+inheritance or snapshot evaluation; native reasons are mapped to SDK reasons,
+not preserved byte-for-byte. The adapter uses SDK v1.18.0 from go.mod; this is
+API integration, not a complete OpenFeature specification-conformance claim.
 
 Native management, groups, dependencies, staged changes, schedules, audit,
 cleanup, import/export, cache refresh, and provider health do not round-trip
@@ -26,6 +28,8 @@ OpenFeature hooks and events are SDK concerns. The adapter exposes configured
 hooks but does not synthesize provider events from native management changes,
 because the native provider contract has no ordered change-event stream. Its
 event channel therefore remains silent and closes exactly once at shutdown.
-The adapter exposes provider metadata, initialization, shutdown, and evaluation
-without installing global hooks or a global client. The application owns SDK
-lifecycle.
+The adapter exposes provider metadata, initialization, shutdown, and
+evaluation without installing global hooks or a global client. The application
+owns SDK lifecycle. Shutdown attempts owned native Close once; failure is not
+retried and subsequent ShutdownWithContext calls return nil. It closes events
+but does not gate later evaluation.

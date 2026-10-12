@@ -2,44 +2,66 @@ package featureflags
 
 import "fmt"
 
-// StrategyInput is the bounded, explicit input to deterministic strategies.
+// StrategyInput is explicit borrowed input to deterministic strategies. Engine
+// evaluation validates Context first; direct strategy calls do not do so.
 type StrategyInput struct {
+	// FeatureKey is the current feature used for deterministic bucketing.
 	FeatureKey string
-	Context    Context
+	// Context borrows caller maps; callbacks must not mutate or retain unsafe aliases.
+	Context Context
 }
 
 // StrategyResult describes whether a strategy selected its target variant.
 type StrategyResult struct {
-	Match       bool
-	Reason      Reason
+	// Match selects TargetVariant when true; false diagnostics are discarded.
+	Match bool
+	// Reason labels a match; empty selects targeting-match and groups override it.
+	Reason Reason
+	// Diagnostics must exclude sensitive data before output truncation.
 	Diagnostics []Diagnostic
 }
 
 // Strategy is a deterministic evaluation policy. SnapshotStrategy must return
 // a value whose later behavior cannot be changed through the original value.
 type Strategy interface {
+	// StrategyName returns the caller-visible policy name.
 	StrategyName() string
+	// TargetVariant returns the variant selected on a match.
 	TargetVariant() string
+	// ValidateStrategy checks policy bounds; feature validation checks target existence.
 	ValidateStrategy(Limits) error
+	// EvaluateStrategy must be deterministic, concurrent-safe, bounded and panic-free; inputs
+	// are borrowed.
 	EvaluateStrategy(StrategyInput) (StrategyResult, error)
+	// SnapshotStrategy must isolate all mutable state; memory invokes it under provider
+	// locks.
 	SnapshotStrategy() Strategy
 }
 
 // ExactTargetStrategy matches explicitly listed tenants and subjects. When a
 // list is non-empty it must contain the corresponding context value.
 type ExactTargetStrategy struct {
-	Name         string
-	Variant      string
-	Tenants      []string
-	Subjects     []string
+	// Name is the caller-visible match identity.
+	Name string
+	// Variant names the feature variant selected on a match.
+	Variant string
+	// Tenants restricts tenants when nonempty; empty is unrestricted.
+	Tenants []string
+	// Subjects restricts subjects when nonempty; empty is unrestricted.
+	Subjects []string
+	// Environments restricts environments when nonempty; empty is unrestricted.
 	Environments []string
-	Attributes   map[string]string
+	// Attributes requires string equality; a missing attribute reads as an empty string.
+	Attributes map[string]string
 }
 
+// StrategyName returns the caller-visible policy name.
 func (s ExactTargetStrategy) StrategyName() string { return s.Name }
 
+// TargetVariant returns the variant selected on a match.
 func (s ExactTargetStrategy) TargetVariant() string { return s.Variant }
 
+// ValidateStrategy checks policy bounds; feature validation checks target existence.
 func (s ExactTargetStrategy) ValidateStrategy(limits Limits) error {
 	if err := validateTargetValues(limits, s.Tenants, s.Subjects, s.Environments); err != nil {
 		return err
@@ -73,6 +95,8 @@ func validateTargetValues(limits Limits, sets ...[]string) error {
 	return nil
 }
 
+// EvaluateStrategy evaluates explicit borrowed context without ambient clock or request
+// state.
 func (s ExactTargetStrategy) EvaluateStrategy(input StrategyInput) (StrategyResult, error) {
 	return StrategyResult{
 		Match: listedOrUnrestricted(s.Tenants, input.Context.Tenant) &&
@@ -86,16 +110,24 @@ func (s ExactTargetStrategy) EvaluateStrategy(input StrategyInput) (StrategyResu
 // PercentageStrategy selects a stable fraction of tenant-scoped subjects.
 // Threshold uses five decimal digits of precision: 100000 means 100%.
 type PercentageStrategy struct {
-	Name      string
-	Variant   string
-	Seed      string
+	// Name is the caller-visible match identity.
+	Name string
+	// Variant names the feature variant selected on a match.
+	Variant string
+	// Seed is versioned hash input; changing it reshuffles assignments.
+	Seed string
+	// Threshold is the exclusive bucket ceiling in [0,100000]; tenant and subject are
+	// required.
 	Threshold uint32
 }
 
+// StrategyName returns the caller-visible policy name.
 func (s PercentageStrategy) StrategyName() string { return s.Name }
 
+// TargetVariant returns the variant selected on a match.
 func (s PercentageStrategy) TargetVariant() string { return s.Variant }
 
+// ValidateStrategy checks policy bounds; feature validation checks target existence.
 func (s PercentageStrategy) ValidateStrategy(Limits) error {
 	if s.Threshold > uint32(bucketPrecision) {
 		return fmt.Errorf("threshold %d exceeds precision %d", s.Threshold, bucketPrecision)
@@ -104,6 +136,8 @@ func (s PercentageStrategy) ValidateStrategy(Limits) error {
 	return nil
 }
 
+// EvaluateStrategy evaluates explicit borrowed context without ambient clock or request
+// state.
 func (s PercentageStrategy) EvaluateStrategy(input StrategyInput) (StrategyResult, error) {
 	if input.Context.Tenant == "" || input.Context.Subject == "" {
 		return StrategyResult{
@@ -121,8 +155,10 @@ func (s PercentageStrategy) EvaluateStrategy(input StrategyInput) (StrategyResul
 	}, nil
 }
 
+// SnapshotStrategy isolates mutable policy state for concurrent snapshot evaluation.
 func (s PercentageStrategy) SnapshotStrategy() Strategy { return s }
 
+// SnapshotStrategy isolates mutable policy state for concurrent snapshot evaluation.
 func (s ExactTargetStrategy) SnapshotStrategy() Strategy {
 	s.Tenants = append([]string(nil), s.Tenants...)
 	s.Subjects = append([]string(nil), s.Subjects...)

@@ -8,7 +8,12 @@ import (
 )
 
 // MemoryProvider is an in-process management provider with tenant-isolated
-// state and optimistic concurrency.
+// state and optimistic concurrency. Use NewMemoryProvider; the zero value is
+// unusable. Operations synchronize state, but trusted strategy validation/copy
+// callbacks may execute under that lock: bound them and do not re-enter. Context
+// cancellation is checked before admission, not a preemptive lock-wait deadline.
+// Limits are per tenant; tenant count and audit Actor byte size are not bounded.
+// Close is a no-op and does not clear state or reject later operations.
 type MemoryProvider struct {
 	mu        sync.RWMutex
 	limits    Limits
@@ -24,6 +29,8 @@ type memoryRecord struct {
 	deleted    bool
 }
 
+// NewMemoryProvider retains supplied limits without validation; use DefaultLimits for
+// defaults.
 func NewMemoryProvider(limits Limits) *MemoryProvider {
 	return &MemoryProvider{
 		limits:    limits,
@@ -35,6 +42,7 @@ func NewMemoryProvider(limits Limits) *MemoryProvider {
 	}
 }
 
+// Capabilities reports native management capabilities.
 func (*MemoryProvider) Capabilities() Capabilities {
 	return Capabilities{
 		OptimisticConcurrency: true,
@@ -49,6 +57,7 @@ func (*MemoryProvider) Capabilities() Capabilities {
 // TenantByteLimit returns the configured tenant-key byte limit.
 func (p *MemoryProvider) TenantByteLimit() int { return p.limits.MaxKeyBytes }
 
+// Health reports readiness without treating unavailability as a flag value.
 func (*MemoryProvider) Health(ctx context.Context) ProviderHealth {
 	if ctx.Err() != nil {
 		return ProviderHealth{Code: "context_cancelled"}
@@ -57,8 +66,10 @@ func (*MemoryProvider) Health(ctx context.Context) ProviderHealth {
 	return ProviderHealth{Healthy: true, Code: "ready"}
 }
 
+// Close returns ctx.Err only; memory state remains usable and retained.
 func (*MemoryProvider) Close(ctx context.Context) error { return ctx.Err() }
 
+// Create creates a copied definition at version 1; existing tombstones also conflict.
 func (p *MemoryProvider) Create(
 	ctx context.Context,
 	tenant string,
@@ -95,6 +106,7 @@ func (p *MemoryProvider) Create(
 	return cloneDefinition(stored), nil
 }
 
+// Update replaces a live definition at its expected version and increments it.
 func (p *MemoryProvider) Update(
 	ctx context.Context,
 	tenant string,
@@ -136,6 +148,7 @@ func (p *MemoryProvider) Update(
 	return cloneDefinition(stored), nil
 }
 
+// Snapshot returns a copied tenant-bound graph; malformed cross-references remain errors.
 func (p *MemoryProvider) Snapshot(ctx context.Context, tenant string) (Snapshot, error) {
 	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return Snapshot{}, err
@@ -161,6 +174,7 @@ func (p *MemoryProvider) Snapshot(ctx context.Context, tenant string) (Snapshot,
 	return snapshot.bindTenant(tenant), nil
 }
 
+// CreateGroup creates a version 1 group after validating the combined graph.
 func (p *MemoryProvider) CreateGroup(
 	ctx context.Context,
 	tenant string,
@@ -198,6 +212,7 @@ func (p *MemoryProvider) CreateGroup(
 	return cloneGroup(stored), nil
 }
 
+// UpdateGroup replaces an expected-version group after validating its affected graph.
 func (p *MemoryProvider) UpdateGroup(
 	ctx context.Context,
 	tenant string,
@@ -236,6 +251,7 @@ func (p *MemoryProvider) UpdateGroup(
 	return cloneGroup(stored), nil
 }
 
+// DeleteGroup removes an expected-version group only when unreferenced.
 func (p *MemoryProvider) DeleteGroup(
 	ctx context.Context,
 	tenant, groupKey string,
@@ -272,6 +288,8 @@ func (p *MemoryProvider) DeleteGroup(
 	return cloneGroup(group), nil
 }
 
+// AssignGroup appends a group at the expected feature version; existing assignment is
+// unchanged.
 func (p *MemoryProvider) AssignGroup(
 	ctx context.Context,
 	tenant, featureKey, groupKey string,
@@ -312,6 +330,7 @@ func (p *MemoryProvider) AssignGroup(
 	return cloneDefinition(updated), nil
 }
 
+// RemoveGroup removes an existing group assignment at the expected feature version.
 func (p *MemoryProvider) RemoveGroup(
 	ctx context.Context,
 	tenant, featureKey, groupKey string,
@@ -385,6 +404,7 @@ func cloneGroup(group GroupDefinition) GroupDefinition {
 	return group
 }
 
+// Activate sets a live definition active at its expected version.
 func (p *MemoryProvider) Activate(
 	ctx context.Context,
 	tenant, key string,
@@ -394,6 +414,7 @@ func (p *MemoryProvider) Activate(
 	return p.setLifecycle(ctx, tenant, key, expectedVersion, actor, LifecycleActive, AuditActivate, false)
 }
 
+// Deactivate sets a live definition inactive at its expected version.
 func (p *MemoryProvider) Deactivate(
 	ctx context.Context,
 	tenant, key string,
@@ -403,6 +424,7 @@ func (p *MemoryProvider) Deactivate(
 	return p.setLifecycle(ctx, tenant, key, expectedVersion, actor, LifecycleInactive, AuditDeactivate, false)
 }
 
+// Delete archives a live definition as a restorable tombstone at its expected version.
 func (p *MemoryProvider) Delete(
 	ctx context.Context,
 	tenant, key string,
@@ -412,6 +434,7 @@ func (p *MemoryProvider) Delete(
 	return p.setLifecycle(ctx, tenant, key, expectedVersion, actor, LifecycleArchived, AuditDelete, true)
 }
 
+// Restore restores a tombstone as inactive at its expected version.
 func (p *MemoryProvider) Restore(
 	ctx context.Context,
 	tenant, key string,
@@ -440,6 +463,7 @@ func (p *MemoryProvider) Restore(
 	return cloneDefinition(record.definition), nil
 }
 
+// Audit returns owned retained entries for the feature/group key, not external delivery.
 func (p *MemoryProvider) Audit(ctx context.Context, tenant, key string) ([]AuditEntry, error) {
 	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err

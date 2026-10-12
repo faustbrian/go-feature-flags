@@ -1,4 +1,7 @@
-// Package featureflagstest provides the shared provider conformance suite.
+// Package featureflagstest provides selected shared provider/Fleet assertions.
+// Factory must return isolated test state and own external client/service
+// cleanup; helpers mutate fixed tenant-a keys and use runner-bounded contexts.
+// Passing does not qualify every transport, topology, failure or specification.
 package featureflagstest
 
 import (
@@ -11,7 +14,8 @@ import (
 	featureflags "github.com/faustbrian/go-feature-flags/v2"
 )
 
-// Factory returns an isolated provider for one conformance test.
+// Factory returns an isolated provider for one conformance test and registers
+// external resource cleanup; provider Close need not close its client.
 type Factory func(*testing.T) featureflags.Provider
 
 type fleetClock struct {

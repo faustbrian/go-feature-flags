@@ -7,15 +7,22 @@ import (
 	"time"
 )
 
-// StagedChange is an immutable pending feature replacement.
+// StagedChange is a copied view of a pending feature replacement. Callers may
+// mutate their view without changing retained provider state.
 type StagedChange struct {
-	ID              uint64
-	Definition      Definition
+	// ID is the tenant-local stage identity.
+	ID uint64
+	// Definition is a pending mutable result copy, isolated from retained provider state.
+	Definition Definition
+	// ExpectedVersion must still match when the stage is applied.
 	ExpectedVersion uint64
-	ApplyAt         time.Time
-	Actor           string
+	// ApplyAt is the explicit scheduled instant; zero requires ApplyStage.
+	ApplyAt time.Time
+	// Actor is caller attribution; keep it bounded and secret-free.
+	Actor string
 }
 
+// StageUpdate copies a pending expected-version replacement without applying it.
 func (p *MemoryProvider) StageUpdate(
 	ctx context.Context,
 	tenant string,
@@ -61,6 +68,7 @@ func (p *MemoryProvider) StageUpdate(
 	return cloneStagedChange(change), nil
 }
 
+// ApplyStage atomically applies one stage after rechecking version and combined graph.
 func (p *MemoryProvider) ApplyStage(
 	ctx context.Context,
 	tenant string,
@@ -80,6 +88,8 @@ func (p *MemoryProvider) ApplyStage(
 	return results[0], nil
 }
 
+// ApplyScheduled atomically applies nonzero-time due stages in ID order; failure aborts
+// all.
 func (p *MemoryProvider) ApplyScheduled(
 	ctx context.Context,
 	tenant string,
@@ -108,6 +118,7 @@ func (p *MemoryProvider) ApplyScheduled(
 	return p.applyStagesLocked(tenant, ids, actor)
 }
 
+// StagedChanges returns copied pending changes in ID order.
 func (p *MemoryProvider) StagedChanges(ctx context.Context, tenant string) ([]StagedChange, error) {
 	if err := providerInput(ctx, tenant, p.limits.MaxKeyBytes); err != nil {
 		return nil, err

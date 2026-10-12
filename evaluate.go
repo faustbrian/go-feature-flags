@@ -10,54 +10,82 @@ import (
 type Reason string
 
 const (
-	ReasonTargetingMatch        Reason = "targeting_match"
-	ReasonRollout               Reason = "rollout"
-	ReasonSchedule              Reason = "schedule"
-	ReasonDependencyFailed      Reason = "dependency_failed"
-	ReasonGroupMatch            Reason = "group_match"
-	ReasonDefault               Reason = "default"
-	ReasonInactive              Reason = "inactive"
-	ReasonDegradedFailOpen      Reason = "degraded_fail_open"
-	ReasonDegradedDefault       Reason = "degraded_default"
+	// ReasonTargetingMatch labels targeting match evaluation outcomes.
+	ReasonTargetingMatch Reason = "targeting_match"
+	// ReasonRollout labels rollout evaluation outcomes.
+	ReasonRollout Reason = "rollout"
+	// ReasonSchedule labels schedule evaluation outcomes.
+	ReasonSchedule Reason = "schedule"
+	// ReasonDependencyFailed labels dependency failed evaluation outcomes.
+	ReasonDependencyFailed Reason = "dependency_failed"
+	// ReasonGroupMatch labels group match evaluation outcomes.
+	ReasonGroupMatch Reason = "group_match"
+	// ReasonDefault labels default evaluation outcomes.
+	ReasonDefault Reason = "default"
+	// ReasonInactive labels inactive evaluation outcomes.
+	ReasonInactive Reason = "inactive"
+	// ReasonDegradedFailOpen labels degraded fail open evaluation outcomes.
+	ReasonDegradedFailOpen Reason = "degraded_fail_open"
+	// ReasonDegradedDefault labels degraded default evaluation outcomes.
+	ReasonDegradedDefault Reason = "degraded_default"
+	// ReasonDegradedLastKnownGood labels degraded last known good evaluation outcomes.
 	ReasonDegradedLastKnownGood Reason = "degraded_last_known_good"
 )
 
-// Diagnostic contains safe, bounded evaluation information and never embeds
-// context values.
+// Diagnostic contains selected evaluation information. Built-in messages avoid
+// context values; custom strategy strings are bounded, not automatically redacted.
 type Diagnostic struct {
-	Code    string
+	// Code is caller-visible diagnostic identity; use safe labels.
+	Code string
+	// Message is caller-visible text; byte truncation is not redaction.
 	Message string
 }
 
 // Detail is the typed result of a native evaluation.
 type Detail[T any] struct {
-	Value           T
-	Variant         string
-	Reason          Reason
+	// Value is the result; structured bytes are copied by typed getters.
+	Value T
+	// Variant is the selected variant, empty for a default.
+	Variant string
+	// Reason explains the selected result, not all attempted strategies.
+	Reason Reason
+	// MatchedStrategy is a caller-visible match name with group prefix when applicable.
 	MatchedStrategy string
-	Version         uint64
-	Diagnostics     []Diagnostic
+	// Version is the resource version, not a global revision.
+	Version uint64
+	// Diagnostics is owned bounded output; custom strings are not automatically sanitized.
+	Diagnostics []Diagnostic
 }
 
 // EvaluationRequest identifies one strictly typed batch operation.
 type EvaluationRequest struct {
-	Key  string
+	// Key is the corresponding tenant-local feature identity.
+	Key string
+	// Type is the exact native representation; no coercion is applied.
 	Type Type
 }
 
 // EvaluationDetail is the mixed-type equivalent of Detail for batch calls.
 type EvaluationDetail struct {
-	Key             string
-	Value           Value
-	Variant         string
-	Reason          Reason
+	// Key is the corresponding tenant-local feature identity.
+	Key string
+	// Value is the result; structured bytes are copied by typed getters.
+	Value Value
+	// Variant is the selected variant, empty for a default.
+	Variant string
+	// Reason explains the selected result, not all attempted strategies.
+	Reason Reason
+	// MatchedStrategy is a caller-visible match name with group prefix when applicable.
 	MatchedStrategy string
-	Version         uint64
-	Diagnostics     []Diagnostic
+	// Version is the resource version, not a global revision.
+	Version uint64
+	// Diagnostics is owned bounded output; custom strings are not automatically sanitized.
+	Diagnostics []Diagnostic
 }
 
 // Snapshot is an immutable collection used for consistent request-scoped
-// evaluations.
+// evaluations. It is concurrent-safe only when retained custom Strategy behavior
+// is immutable and concurrent-safe; the zero snapshot has no usable definitions.
 type Snapshot struct {
 	definitions map[string]Definition
 	groups      map[string]GroupDefinition
@@ -65,6 +93,7 @@ type Snapshot struct {
 	limits      Limits
 }
 
+// NewSnapshot validates and copies definitions without groups or tenant binding.
 func NewSnapshot(definitions []Definition, limits Limits) (Snapshot, error) {
 	return NewSnapshotWithGroups(definitions, nil, limits)
 }
@@ -245,6 +274,8 @@ func detailOf[T any](value T, result evaluationResult) Detail[T] {
 	}
 }
 
+// evaluateKey keeps each dependency on the current DFS path only. Group
+// deduplication is per feature, so a shared parent runs at most once in order.
 func (s Snapshot) evaluateKey(
 	key string,
 	context Context,
@@ -302,6 +333,8 @@ func (s Snapshot) evaluateKey(
 	return defaultResult(definition, ReasonDefault, nil), nil
 }
 
+// Nonmatching diagnostics are deliberately not accumulated; only the selected
+// strategy output is exposed. Truncation bounds bytes, not sensitive contents.
 func evaluateOneStrategy(
 	definition Definition,
 	strategy Strategy,

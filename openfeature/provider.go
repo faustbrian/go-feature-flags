@@ -1,5 +1,9 @@
 // Package openfeature exposes the native engine through the OpenFeature Go
-// provider contract without making OpenFeature the product boundary.
+// provider contract without making OpenFeature the product boundary. It targets
+// the pinned go-sdk API, not a complete specification-conformance claim. New
+// retains a fixed tenant and caller-owned native provider; OwnProvider opts into
+// one Close attempt. Evaluations map explicit context and load separate snapshots.
+// Events remain silent. Callers own SDK registration, hook behavior and deadlines.
 package openfeature
 
 import (
@@ -18,12 +22,17 @@ import (
 	of "github.com/open-feature/go-sdk/openfeature"
 )
 
+// Options sets hook and native-provider cleanup ownership.
 type Options struct {
-	Hooks       []of.Hook
+	// Hooks copies the slice but retains each caller-owned hook.
+	Hooks []of.Hook
+	// OwnProvider requests one native Close attempt at shutdown, including failure.
 	OwnProvider bool
 }
 
 // Provider is an optional OpenFeature adapter bound to exactly one tenant.
+// Concurrent use depends on the native provider/hooks. Shutdown closes the
+// event channel once, but does not gate later evaluations or retry failed Close.
 type Provider struct {
 	native featureflags.Provider
 	tenant string
@@ -38,6 +47,8 @@ var _ of.FeatureProvider = (*Provider)(nil)
 var _ of.ContextAwareStateHandler = (*Provider)(nil)
 var _ of.EventHandler = (*Provider)(nil)
 
+// New retains a fixed tenant/native provider and copies hooks; no SDK initialization
+// occurs.
 func New(native featureflags.Provider, tenant string, options Options) (*Provider, error) {
 	limits := featureflags.DefaultLimits()
 	if isNil(native) || tenant == "" {
@@ -70,16 +81,21 @@ func isNil(value any) bool {
 	}
 }
 
+// Metadata returns the stable adapter name, not version or conformance evidence.
 func (*Provider) Metadata() of.Metadata { return of.Metadata{Name: "go-feature-flags"} }
 
+// Hooks returns a copied slice of retained caller-owned hooks.
 func (provider *Provider) Hooks() []of.Hook { return append([]of.Hook(nil), provider.hooks...) }
 
+// EventChannel returns the silent adapter-owned channel, closed once at shutdown.
 func (provider *Provider) EventChannel() <-chan of.Event { return provider.events }
 
+// Init checks native health with Background; it does not load a snapshot.
 func (provider *Provider) Init(of.EvaluationContext) error {
 	return provider.InitWithContext(context.Background(), of.EvaluationContext{})
 }
 
+// InitWithContext checks native health with ctx and ignores evaluation-context input.
 func (provider *Provider) InitWithContext(ctx context.Context, _ of.EvaluationContext) error {
 	health := provider.native.Health(ctx)
 	if !health.Healthy {
@@ -89,8 +105,11 @@ func (provider *Provider) InitWithContext(ctx context.Context, _ of.EvaluationCo
 	return nil
 }
 
+// Shutdown attempts owned Close with Background and discards its error.
 func (provider *Provider) Shutdown() { _ = provider.ShutdownWithContext(context.Background()) }
 
+// ShutdownWithContext attempts owned Close once then closes events; later calls return
+// nil, not a prior failure.
 func (provider *Provider) ShutdownWithContext(ctx context.Context) error {
 	var err error
 	provider.once.Do(func() {
@@ -103,6 +122,8 @@ func (provider *Provider) ShutdownWithContext(ctx context.Context) error {
 	return err
 }
 
+// BooleanEvaluation maps context then loads one snapshot; errors return the supplied
+// default and safe error.
 func (provider *Provider) BooleanEvaluation(
 	ctx context.Context,
 	flag string,
@@ -121,6 +142,8 @@ func (provider *Provider) BooleanEvaluation(
 	return of.BoolResolutionDetail{Value: detail.Value, ProviderResolutionDetail: mapDetail(detail.Variant, detail.Reason, detail.MatchedStrategy, detail.Version)}
 }
 
+// StringEvaluation maps context then loads one snapshot; errors return the supplied
+// default and safe error.
 func (provider *Provider) StringEvaluation(
 	ctx context.Context,
 	flag, defaultValue string,
@@ -138,6 +161,8 @@ func (provider *Provider) StringEvaluation(
 	return of.StringResolutionDetail{Value: detail.Value, ProviderResolutionDetail: mapDetail(detail.Variant, detail.Reason, detail.MatchedStrategy, detail.Version)}
 }
 
+// FloatEvaluation maps context then loads one snapshot; errors return the supplied default
+// and safe error.
 func (provider *Provider) FloatEvaluation(
 	ctx context.Context,
 	flag string,
@@ -156,6 +181,8 @@ func (provider *Provider) FloatEvaluation(
 	return of.FloatResolutionDetail{Value: detail.Value, ProviderResolutionDetail: mapDetail(detail.Variant, detail.Reason, detail.MatchedStrategy, detail.Version)}
 }
 
+// IntEvaluation maps context then loads one snapshot; errors return the supplied default
+// and safe error.
 func (provider *Provider) IntEvaluation(
 	ctx context.Context,
 	flag string,
@@ -174,6 +201,8 @@ func (provider *Provider) IntEvaluation(
 	return of.IntResolutionDetail{Value: detail.Value, ProviderResolutionDetail: mapDetail(detail.Variant, detail.Reason, detail.MatchedStrategy, detail.Version)}
 }
 
+// ObjectEvaluation maps context then loads one snapshot; errors return the supplied
+// default and safe error.
 func (provider *Provider) ObjectEvaluation(
 	ctx context.Context,
 	flag string,
@@ -411,6 +440,9 @@ type structuredVisit struct {
 	pointer uintptr
 }
 
+// Preflight excludes custom encoders before invoking json.Marshal and tracks
+// the current recursion path, not all aliases. Budgets limit selected input
+// shapes/encoded bytes; they are not a total process heap or CPU bound.
 func validateStructuredValue(value reflect.Value, limits featureflags.Limits, depth int, budget *structuredBudget) error {
 	if depth > limits.MaxEvaluationDepth {
 		return fmt.Errorf("structured fact depth exceeds %d: %w", limits.MaxEvaluationDepth, featureflags.ErrContextLimit)

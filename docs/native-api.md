@@ -7,10 +7,13 @@ metadata, owner, lifecycle, dependencies, groups, tags, version, and ordered
 strategies. Supported values are boolean, string, integer, IEEE-754 float,
 exact decimal text, and structured JSON. Evaluation never coerces values.
 
-Definitions in `draft`, `inactive`, or `archived` state return their default.
-Active definitions evaluate dependencies, feature groups, then their ordered
-strategies. The first match wins. Details include value, variant, reason,
-matched strategy, definition version, and bounded safe diagnostics.
+Any lifecycle other than exactly `active` returns the definition default,
+including `deprecated` and unrecognized labels. Validate does not reject
+unknown lifecycle labels. Active definitions evaluate dependencies, feature
+groups, then their ordered strategies. The first match wins. Details include
+value, variant, reason, matched strategy, definition version, and bounded
+diagnostics from a selected strategy. Custom diagnostics are truncated, not
+sanitized, and diagnostics from nonmatching strategies are discarded.
 
 ## Context
 
@@ -23,7 +26,8 @@ personal data in context.
 ## Strategies
 
 - `ExactTargetStrategy` matches configured tenants, subjects, environments,
-  and exact string attributes.
+  and string attributes. A missing attribute reads as an empty string, so an
+  empty configured target can match an absent attribute.
 - `PercentageStrategy` provides stable 0.001% rollout precision. Keep its seed
   stable to preserve assignments.
 - `SetStrategy` applies deny lists before allow lists for tenants and subjects.
@@ -51,20 +55,25 @@ deleting a referenced or inherited group returns `ErrGroupInUse`.
 ## Snapshots and batches
 
 Use one snapshot for all evaluations in a request. Typed methods reject type
-mismatches. `EvaluateBatch` accepts mixed typed keys and rejects batches above
-`Limits.MaxBatchSize`. Snapshots never observe later provider mutations.
+mismatches. `Batch` accepts mixed typed keys and rejects batches above
+`Limits.MaxBatchSize`. Built-in strategy snapshots do not observe later
+provider mutations. Custom strategies must preserve immutable behavior and be
+safe for concurrent calls; callbacks are synchronous, not panic-isolated or
+forcibly deadline-bounded. Context maps are borrowed during evaluation.
 
 ## Determinism
 
-Rollout bucketing hashes length-prefixed fields, so concatenation ambiguity is
-impossible. Scheduling uses `Context.Time`, and scheduled management changes
-use the time explicitly passed to `ApplyScheduled`. The package never reads a
-process clock during evaluation.
+Rollout bucketing hashes framed fields using the frozen version-1 mapping.
+Native evaluation bounds input sizes; the standalone Bucket helper accepts
+arbitrary strings and encodes only the low 32 bits of each byte length.
+Scheduling uses `Context.Time`, and scheduled management changes use the time
+explicitly passed to `ApplyScheduled`. Native Snapshot evaluation never reads
+a process clock; Fleet evaluation uses its explicit Clock for snapshot age.
 
-The portable bucketing contract is version 1: start with the UTF-8 bytes of
-`feature-flags/bucket/v1`, append seed, feature key, tenant, and subject in
-that order, prefix each UTF-8 field with its unsigned 32-bit big-endian byte
-length, then compute SHA-256. Interpret the first eight digest bytes as an
-unsigned big-endian integer and reduce it modulo 100000. The language-neutral
-vectors in `testdata/bucketing-v1.json` freeze the full digest and assignment,
-including empty, Unicode, tenant-isolation, and framing cases.
+The portable bucketing contract is version 1: start with the ASCII bytes of
+`go-feature-flags/bucket/v1`, append seed, feature key, tenant, and subject in
+that order, prefix each raw string byte field with its low 32-bit big-endian
+byte length, then compute SHA-256. Interpret the first eight digest bytes as
+an unsigned big-endian integer and reduce it modulo 100000. The language-
+neutral vectors in `testdata/bucketing-v1.json` freeze the full digest and
+assignment, including empty, Unicode, tenant-isolation, and framing cases.

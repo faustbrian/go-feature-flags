@@ -23,45 +23,70 @@ const (
 )
 
 var (
-	ErrNoUsableSnapshot    = errors.New("feature flag fleet has no usable snapshot")
-	ErrMalformedSnapshot   = errors.New("feature flag fleet snapshot is malformed")
-	ErrSnapshotStale       = errors.New("feature flag fleet snapshot is too stale")
-	ErrSnapshotFuture      = errors.New("feature flag fleet snapshot source time exceeds allowed clock skew")
-	ErrUnsafeFlagPolicy    = errors.New("feature flag fleet policy is unsafe for a security-sensitive flag")
-	ErrRefreshLoadLimit    = errors.New("feature flag fleet provider load limit exceeded")
-	ErrRefreshWaiterLimit  = errors.New("feature flag fleet refresh waiter limit exceeded")
-	ErrFleetStopped        = errors.New("feature flag fleet is stopped")
-	ErrSnapshotReordered   = errors.New("feature flag fleet snapshot is older than the active revision")
+	// ErrNoUsableSnapshot identifies feature flag fleet has no usable snapshot.
+	ErrNoUsableSnapshot = errors.New("feature flag fleet has no usable snapshot")
+	// ErrMalformedSnapshot identifies feature flag fleet snapshot is malformed.
+	ErrMalformedSnapshot = errors.New("feature flag fleet snapshot is malformed")
+	// ErrSnapshotStale identifies feature flag fleet snapshot is too stale.
+	ErrSnapshotStale = errors.New("feature flag fleet snapshot is too stale")
+	// ErrSnapshotFuture identifies feature flag fleet snapshot source time exceeds allowed
+	// clock skew.
+	ErrSnapshotFuture = errors.New("feature flag fleet snapshot source time exceeds allowed clock skew")
+	// ErrUnsafeFlagPolicy identifies feature flag fleet policy is unsafe for a security-
+	// sensitive flag.
+	ErrUnsafeFlagPolicy = errors.New("feature flag fleet policy is unsafe for a security-sensitive flag")
+	// ErrRefreshLoadLimit identifies feature flag fleet provider load limit exceeded.
+	ErrRefreshLoadLimit = errors.New("feature flag fleet provider load limit exceeded")
+	// ErrRefreshWaiterLimit identifies feature flag fleet refresh waiter limit exceeded.
+	ErrRefreshWaiterLimit = errors.New("feature flag fleet refresh waiter limit exceeded")
+	// ErrFleetStopped identifies feature flag fleet is stopped.
+	ErrFleetStopped = errors.New("feature flag fleet is stopped")
+	// ErrSnapshotReordered identifies feature flag fleet snapshot is older than the active
+	// revision.
+	ErrSnapshotReordered = errors.New("feature flag fleet snapshot is older than the active revision")
+	// ErrInvalidInvalidation identifies feature flag fleet invalidation is invalid.
 	ErrInvalidInvalidation = errors.New("feature flag fleet invalidation is invalid")
+	// ErrInvalidationStreams identifies feature flag fleet invalidation stream limit
+	// exceeded.
 	ErrInvalidationStreams = errors.New("feature flag fleet invalidation stream limit exceeded")
 )
 
-// SnapshotCandidate is a fully loaded snapshot and its provider-owned causal
-// metadata. Revision must identify the complete graph and must not be reused
-// for different state. SourceTime is the time that revision became
-// authoritative. A fleet validates the complete snapshot before activation.
+// SnapshotCandidate carries a complete graph and source metadata. Custom loaders
+// must identify the complete state without revision reuse and supply authoritative
+// source time. ProviderSnapshotLoader instead uses fetch time and canonical export
+// identity, with its documented ordering limitations. Fleet validates the graph
+// before activation, not the authenticity of this metadata.
 type SnapshotCandidate struct {
-	Snapshot   Snapshot
-	Revision   string
+	// Snapshot is the complete tenant-bound graph; custom strategies must remain immutable.
+	Snapshot Snapshot
+	// Revision is opaque complete-state identity, not an ordered counter or authenticated
+	// digest.
+	Revision string
+	// Provenance is visible source identity, bounded but not authenticated/redacted.
 	Provenance string
+	// SourceTime is source age metadata; ProviderSnapshotLoader stamps fetch time.
 	SourceTime time.Time
 }
 
 // SnapshotLoader loads one complete replacement candidate. Implementations
 // must not return partial state as a successful candidate.
 type SnapshotLoader interface {
+	// Load loads complete state with the supplied context; implementations must bound work.
 	Load(context.Context, string) (SnapshotCandidate, error)
 }
 
 // SnapshotLoadFunc adapts a function to SnapshotLoader.
 type SnapshotLoadFunc func(context.Context, string) (SnapshotCandidate, error)
 
+// Load loads complete state with the supplied context; implementations must bound work.
 func (function SnapshotLoadFunc) Load(ctx context.Context, tenant string) (SnapshotCandidate, error) {
 	return function(ctx, tenant)
 }
 
 // ProviderSnapshotLoader adapts the native Provider contract and derives a
-// stable content revision from the fully validated immutable snapshot.
+// canonical-export revision from the fully validated snapshot. Export sorts
+// group attachments, so this revision does not distinguish all native group
+// precedence changes. Custom/order-sensitive revision policy needs SnapshotLoader.
 type ProviderSnapshotLoader struct {
 	provider   Provider
 	clock      CacheClock
@@ -77,7 +102,8 @@ func NewProviderSnapshotLoader(provider Provider, clock CacheClock, provenance s
 	return &ProviderSnapshotLoader{provider: provider, clock: clock, provenance: provenance}, nil
 }
 
-// Load returns a complete candidate without a second provider read.
+// Load returns a complete candidate without a second provider read. SourceTime
+// is fetch time, not authoritative commit time; only portable strategies export.
 func (loader *ProviderSnapshotLoader) Load(ctx context.Context, tenant string) (SnapshotCandidate, error) {
 	snapshot, err := loader.provider.Snapshot(ctx, tenant)
 	if err != nil {
@@ -105,7 +131,9 @@ func (loader *ProviderSnapshotLoader) Load(ctx context.Context, tenant string) (
 // SnapshotCache is an optional durable or distributed last-known-good store.
 // Cache ownership and shutdown remain with the caller.
 type SnapshotCache interface {
+	// Load loads complete state with the supplied context; implementations must bound work.
 	Load(context.Context, string) (SnapshotCandidate, bool, error)
+	// Store stores the complete candidate; storage ownership remains external.
 	Store(context.Context, string, SnapshotCandidate) error
 }
 
@@ -113,12 +141,14 @@ type SnapshotCache interface {
 // Next must unblock when its context is cancelled. Reconnection, retry, and
 // transport ownership remain with the implementation.
 type InvalidationWatcher interface {
+	// Next returns the next hint or error and must unblock on cancellation.
 	Next(context.Context, string) (Invalidation, error)
 }
 
 // InvalidationWatchFunc adapts a function to InvalidationWatcher.
 type InvalidationWatchFunc func(context.Context, string) (Invalidation, error)
 
+// Next returns the next hint or error and must unblock on cancellation.
 func (function InvalidationWatchFunc) Next(ctx context.Context, tenant string) (Invalidation, error) {
 	return function(ctx, tenant)
 }
@@ -130,12 +160,14 @@ type RefreshOperation func(context.Context) (SnapshotCandidate, error)
 // concurrency-limit, cache, and shared-budget policies around provider work.
 // Fleet still enforces MaxProviderLoads even if an executor retries.
 type RefreshExecutor interface {
+	// Execute runs operation attempts synchronously; no calls may outlive this method.
 	Execute(context.Context, RefreshOperation) (SnapshotCandidate, error)
 }
 
 // RefreshExecuteFunc adapts a function to RefreshExecutor.
 type RefreshExecuteFunc func(context.Context, RefreshOperation) (SnapshotCandidate, error)
 
+// Execute runs operation attempts synchronously; no calls may outlive this method.
 func (function RefreshExecuteFunc) Execute(ctx context.Context, operation RefreshOperation) (SnapshotCandidate, error) {
 	return function(ctx, operation)
 }
@@ -144,23 +176,27 @@ func (function RefreshExecuteFunc) Execute(ctx context.Context, operation Refres
 // bounded fleet status code. Fleet-owned validation and cancellation errors
 // always retain their built-in classification.
 type FleetFailureClassifier interface {
+	// Classify returns a supported bounded failure code without retaining raw errors.
 	Classify(error) FleetFailureCode
 }
 
 // FleetFailureClassifyFunc adapts a function to FleetFailureClassifier.
 type FleetFailureClassifyFunc func(error) FleetFailureCode
 
+// Classify returns a supported bounded failure code without retaining raw errors.
 func (function FleetFailureClassifyFunc) Classify(err error) FleetFailureCode {
 	return function(err)
 }
 
 // FleetSleeper provides cancelable refresh scheduling.
 type FleetSleeper interface {
+	// Sleep waits a delay and must stop on cancellation.
 	Sleep(context.Context, time.Duration) error
 }
 
 // FleetJitter derives a bounded delay for one replica and refresh sequence.
 type FleetJitter interface {
+	// Delay returns a deterministic delay within the inclusive requested bound.
 	Delay(string, uint64, time.Duration) (time.Duration, error)
 }
 
@@ -213,17 +249,25 @@ func (DeterministicFleetJitter) Delay(replica string, sequence uint64, maximum t
 type DegradedMode uint8
 
 const (
+	// DegradedFailClosed returns ErrSnapshotStale rather than a value.
 	DegradedFailClosed DegradedMode = iota + 1
+	// DegradedFailOpen synthesizes true only for boolean flags.
 	DegradedFailOpen
+	// DegradedDefault uses the explicitly configured validated typed default.
 	DegradedDefault
+	// DegradedLastKnownGood uses retained state only within its age bound.
 	DegradedLastKnownGood
 )
 
 // FlagPolicy controls one flag during a provider outage or stale period.
 type FlagPolicy struct {
-	Mode              DegradedMode
-	Default           Value
-	MaxStaleness      time.Duration
+	// Mode selects explicit degraded behavior; zero is invalid.
+	Mode DegradedMode
+	// Default is used for DegradedDefault and validated when evaluated.
+	Default Value
+	// MaxStaleness bounds last-known-good age; non-positive inherits the fleet maximum.
+	MaxStaleness time.Duration
+	// SecuritySensitive rejects fail-open/default modes, not authorization decisions.
 	SecuritySensitive bool
 }
 
@@ -235,51 +279,90 @@ type FlagPolicy struct {
 // concurrency, and load budgets belong in the shared RefreshExecutor. Fleet
 // does not provide cluster-wide exclusion or authorization semantics.
 type FleetConfig struct {
-	Tenant                     string
-	ReplicaID                  string
-	Loader                     SnapshotLoader
-	Cache                      SnapshotCache
-	Watcher                    InvalidationWatcher
-	Executor                   RefreshExecutor
-	FailureClassifier          FleetFailureClassifier
-	Clock                      CacheClock
-	Sleeper                    FleetSleeper
-	Jitter                     FleetJitter
-	RefreshInterval            time.Duration
-	MinRefreshInterval         time.Duration
-	MaxRefreshJitter           time.Duration
-	LoadTimeout                time.Duration
-	FreshFor                   time.Duration
-	MaxStaleness               time.Duration
-	MaxFutureSkew              time.Duration
-	ConvergenceWindow          time.Duration
-	MaxWaiters                 int
-	MaxProviderLoads           int
+	// Tenant is the fixed nonempty tenant, bounded at 128 bytes.
+	Tenant string
+	// ReplicaID is nonempty jitter identity, bounded at 128 bytes.
+	ReplicaID string
+	// Loader is retained; concurrent calls must honor cancellation and bound work.
+	Loader SnapshotLoader
+	// Cache is optional caller-owned last-known-good storage; Fleet never closes it.
+	Cache SnapshotCache
+	// Watcher is optional caller-owned delivery; Next failure ends the watch loop.
+	Watcher InvalidationWatcher
+	// Executor is optional synchronous resilience; no work may outlive Execute.
+	Executor RefreshExecutor
+	// FailureClassifier is optional trusted classification; unknown results become provider
+	// failure.
+	FailureClassifier FleetFailureClassifier
+	// Clock is retained; concurrent calls must be bounded and panic-free.
+	Clock CacheClock
+	// Sleeper is optional scheduling; nil selects a cancelable timer.
+	Sleeper FleetSleeper
+	// Jitter is optional scheduling; nil selects deterministic replica jitter.
+	Jitter FleetJitter
+	// RefreshInterval is the positive periodic base delay.
+	RefreshInterval time.Duration
+	// MinRefreshInterval is the positive local refresh floor, no greater than
+	// RefreshInterval.
+	MinRefreshInterval time.Duration
+	// MaxRefreshJitter is the nonnegative inclusive periodic delay addition.
+	MaxRefreshJitter time.Duration
+	// LoadTimeout bounds derived load/cache contexts, not forced callback completion.
+	LoadTimeout time.Duration
+	// FreshFor is the positive inclusive fresh source age.
+	FreshFor time.Duration
+	// MaxStaleness is the inclusive admitted stale source age, at least FreshFor.
+	MaxStaleness time.Duration
+	// MaxFutureSkew permits nonnegative future source-clock skew.
+	MaxFutureSkew time.Duration
+	// ConvergenceWindow is a reporting window, not proof of remote convergence.
+	ConvergenceWindow time.Duration
+	// MaxWaiters bounds attached refresh followers, not the leader.
+	MaxWaiters int
+	// MaxProviderLoads bounds attempts per executor call, including rejected attempts.
+	MaxProviderLoads int
+	// MaxConcurrentProviderLoads bounds simultaneous physical loader calls in this Fleet
+	// only.
 	MaxConcurrentProviderLoads int
-	MaxInvalidationStreams     int
-	MaxPolicies                int
-	AllowEmptyBootstrap        bool
-	AllowStaleBootstrap        bool
-	Policies                   map[string]FlagPolicy
+	// MaxInvalidationStreams bounds retained per-stream sequence entries.
+	MaxInvalidationStreams int
+	// MaxPolicies bounds configured per-flag degraded policies.
+	MaxPolicies int
+	// AllowEmptyBootstrap permits empty candidate graphs, including later refresh validation.
+	AllowEmptyBootstrap bool
+	// AllowStaleBootstrap permits bootstrap age beyond FreshFor up to MaxStaleness.
+	AllowStaleBootstrap bool
+	// Policies is copied at construction; Value defaults preserve immutable semantics.
+	Policies map[string]FlagPolicy
 }
 
 // FleetState is the low-cardinality lifecycle state of one tenant fleet.
 type FleetState string
 
 const (
-	FleetCold     FleetState = "cold"
-	FleetReady    FleetState = "ready"
+	// FleetCold reports no successful activation yet.
+	FleetCold FleetState = "cold"
+	// FleetReady reports an active snapshot within FreshFor.
+	FleetReady FleetState = "ready"
+	// FleetDegraded reports retained state older than FreshFor.
 	FleetDegraded FleetState = "degraded"
-	FleetStopped  FleetState = "stopped"
+	// FleetStopped rejects new lifecycle work, not snapshot evaluation.
+	FleetStopped FleetState = "stopped"
 )
 
 // ActiveSnapshot is an immutable snapshot plus explicit age, revision, and
 // provenance metadata.
 type ActiveSnapshot struct {
-	Snapshot    Snapshot
-	Revision    string
-	Provenance  string
-	SourceTime  time.Time
+	// Snapshot is the complete tenant-bound graph; custom strategies must remain immutable.
+	Snapshot Snapshot
+	// Revision is opaque complete-state identity, not an ordered counter or authenticated
+	// digest.
+	Revision string
+	// Provenance is visible source identity, bounded but not authenticated/redacted.
+	Provenance string
+	// SourceTime is source age metadata; ProviderSnapshotLoader stamps fetch time.
+	SourceTime time.Time
+	// ActivatedAt is local activation time, not a provider commit time.
 	ActivatedAt time.Time
 }
 
@@ -292,52 +375,92 @@ func (snapshot ActiveSnapshot) Age(now time.Time) time.Duration {
 type FleetFailureCode string
 
 const (
-	FleetFailureNone            FleetFailureCode = ""
-	FleetFailureProvider        FleetFailureCode = "provider_failure"
+	// FleetFailureNone is the no-failure stable classification.
+	FleetFailureNone FleetFailureCode = ""
+	// FleetFailureProvider is the provider failure stable classification.
+	FleetFailureProvider FleetFailureCode = "provider_failure"
+	// FleetFailureInvalidSnapshot is the invalid snapshot stable classification.
 	FleetFailureInvalidSnapshot FleetFailureCode = "invalid_snapshot"
-	FleetFailureStaleSnapshot   FleetFailureCode = "stale_snapshot"
-	FleetFailureLoadLimit       FleetFailureCode = "provider_load_limit"
-	FleetFailureWaiterLimit     FleetFailureCode = "waiter_limit"
-	FleetFailureCancelled       FleetFailureCode = "cancelled"
-	FleetFailureStopped         FleetFailureCode = "stopped"
-	FleetFailureScheduler       FleetFailureCode = "scheduler_failure"
-	FleetFailureCacheLoad       FleetFailureCode = "cache_load_failure"
-	FleetFailureCacheStore      FleetFailureCode = "cache_store_failure"
-	FleetFailureRetryExhausted  FleetFailureCode = "retry_exhausted"
-	FleetFailureCircuitOpen     FleetFailureCode = "circuit_open"
-	FleetFailureBulkhead        FleetFailureCode = "bulkhead_rejected"
-	FleetFailureThrottled       FleetFailureCode = "throttled"
-	FleetFailureConcurrency     FleetFailureCode = "concurrency_rejected"
+	// FleetFailureStaleSnapshot is the stale snapshot stable classification.
+	FleetFailureStaleSnapshot FleetFailureCode = "stale_snapshot"
+	// FleetFailureLoadLimit is the provider load limit stable classification.
+	FleetFailureLoadLimit FleetFailureCode = "provider_load_limit"
+	// FleetFailureWaiterLimit is the waiter limit stable classification.
+	FleetFailureWaiterLimit FleetFailureCode = "waiter_limit"
+	// FleetFailureCancelled is the cancelled stable classification.
+	FleetFailureCancelled FleetFailureCode = "cancelled"
+	// FleetFailureStopped is the stopped stable classification.
+	FleetFailureStopped FleetFailureCode = "stopped"
+	// FleetFailureScheduler is the scheduler failure stable classification.
+	FleetFailureScheduler FleetFailureCode = "scheduler_failure"
+	// FleetFailureCacheLoad is the cache load failure stable classification.
+	FleetFailureCacheLoad FleetFailureCode = "cache_load_failure"
+	// FleetFailureCacheStore is the cache store failure stable classification.
+	FleetFailureCacheStore FleetFailureCode = "cache_store_failure"
+	// FleetFailureRetryExhausted is the retry exhausted stable classification.
+	FleetFailureRetryExhausted FleetFailureCode = "retry_exhausted"
+	// FleetFailureCircuitOpen is the circuit open stable classification.
+	FleetFailureCircuitOpen FleetFailureCode = "circuit_open"
+	// FleetFailureBulkhead is the bulkhead rejected stable classification.
+	FleetFailureBulkhead FleetFailureCode = "bulkhead_rejected"
+	// FleetFailureThrottled is the throttled stable classification.
+	FleetFailureThrottled FleetFailureCode = "throttled"
+	// FleetFailureConcurrency is the concurrency rejected stable classification.
+	FleetFailureConcurrency FleetFailureCode = "concurrency_rejected"
+	// FleetFailureBudgetExhausted is the budget exhausted stable classification.
 	FleetFailureBudgetExhausted FleetFailureCode = "budget_exhausted"
-	FleetFailureWatcher         FleetFailureCode = "watcher_failure"
-	FleetFailureInvalidation    FleetFailureCode = "invalidation_failure"
+	// FleetFailureWatcher is the watcher failure stable classification.
+	FleetFailureWatcher FleetFailureCode = "watcher_failure"
+	// FleetFailureInvalidation is the invalidation failure stable classification.
+	FleetFailureInvalidation FleetFailureCode = "invalidation_failure"
 )
 
 // FleetStatus is a bounded observable view. It never retains provider errors,
 // flag values, or evaluation context.
 type FleetStatus struct {
-	State               FleetState
-	Revision            string
-	Provenance          string
-	Age                 time.Duration
-	ProviderLoads       uint64
-	LastRefreshFailure  FleetFailureCode
-	LastCacheFailure    FleetFailureCode
-	LastWatcherFailure  FleetFailureCode
-	InvalidationGaps    uint64
+	// State is the lifecycle view with age-derived degradation.
+	State FleetState
+	// Revision is opaque complete-state identity, not an ordered counter or authenticated
+	// digest.
+	Revision string
+	// Provenance is visible source identity, bounded but not authenticated/redacted.
+	Provenance string
+	// Age is nonnegative source age using the fleet rollback clamp.
+	Age time.Duration
+	// ProviderLoads counts physical loader calls and saturates at MaxUint64.
+	ProviderLoads uint64
+	// LastRefreshFailure is the latest classified refresh failure, not its raw cause.
+	LastRefreshFailure FleetFailureCode
+	// LastCacheFailure is the latest cache failure classification.
+	LastCacheFailure FleetFailureCode
+	// LastWatcherFailure is the latest watcher/delivery failure classification.
+	LastWatcherFailure FleetFailureCode
+	// InvalidationGaps counts observed sequence gaps, saturating at MaxUint64.
+	InvalidationGaps uint64
+	// ConvergenceDeadline is the latest requested local convergence deadline.
 	ConvergenceDeadline time.Time
+	// ConvergenceBreached reports an unmet revision after deadline, not transport proof.
 	ConvergenceBreached bool
-	Refreshing          bool
-	WatcherRunning      bool
-	RefreshWaiters      int
+	// Refreshing reports a current coalesced refresh flight.
+	Refreshing bool
+	// WatcherRunning reports the local loop, not remote subscription health.
+	WatcherRunning bool
+	// RefreshWaiters counts attached followers, excluding the leader.
+	RefreshWaiters int
 }
 
 // Invalidation is a tenant- and stream-scoped causal refresh hint.
 type Invalidation struct {
-	Tenant     string
-	Stream     string
-	Sequence   uint64
-	Revision   string
+	// Tenant must equal the fixed fleet tenant.
+	Tenant string
+	// Stream is a bounded ordering namespace, not authenticated identity.
+	Stream string
+	// Sequence is positive monotonic metadata supplied by the caller.
+	Sequence uint64
+	// Revision is opaque complete-state identity, not an ordered counter or authenticated
+	// digest.
+	Revision string
+	// ObservedAt is caller-supplied observation time, not a trusted timestamp.
 	ObservedAt time.Time
 }
 
@@ -345,20 +468,31 @@ type Invalidation struct {
 type InvalidationDisposition string
 
 const (
-	InvalidationCurrent   InvalidationDisposition = "current"
+	// InvalidationCurrent reports a gap-free hint for the active revision.
+	InvalidationCurrent InvalidationDisposition = "current"
+	// InvalidationDuplicate reports the retained stream sequence, without refresh.
 	InvalidationDuplicate InvalidationDisposition = "duplicate"
+	// InvalidationReordered reports an older stream sequence, without refresh.
 	InvalidationReordered InvalidationDisposition = "reordered"
+	// InvalidationRefreshed reports activation of the requested hint revision.
 	InvalidationRefreshed InvalidationDisposition = "refreshed"
-	InvalidationPending   InvalidationDisposition = "pending"
+	// InvalidationPending reports an unmet hint, including deferred or failed refresh.
+	InvalidationPending InvalidationDisposition = "pending"
 )
 
 // InvalidationResult reports causal and bounded-convergence state.
 type InvalidationResult struct {
-	Disposition         InvalidationDisposition
-	Gap                 bool
-	PreviousSequence    uint64
-	ActiveRevision      string
-	Delay               time.Duration
+	// Disposition classifies processing of this hint or refresh.
+	Disposition InvalidationDisposition
+	// Gap reports skipped sequence numbers relative to retained history.
+	Gap bool
+	// PreviousSequence is the retained last sequence before the hint.
+	PreviousSequence uint64
+	// ActiveRevision is the observed revision, possibly not the requested one.
+	ActiveRevision string
+	// Delay is nonnegative caller-observation age.
+	Delay time.Duration
+	// ConvergenceDeadline is set for a newly pending revision, not duplicate/current hints.
 	ConvergenceDeadline time.Time
 }
 
@@ -369,25 +503,37 @@ type invalidationStream struct{ last uint64 }
 type RefreshDisposition string
 
 const (
+	// RefreshActivated reports a replacement with a different active revision.
 	RefreshActivated RefreshDisposition = "activated"
+	// RefreshUnchanged includes same-revision activation with renewed source age.
 	RefreshUnchanged RefreshDisposition = "unchanged"
-	RefreshDeferred  RefreshDisposition = "deferred"
+	// RefreshDeferred reports admission inside MinRefreshInterval, without a load.
+	RefreshDeferred RefreshDisposition = "deferred"
 )
 
 // RefreshResult is the active state after one refresh request.
 type RefreshResult struct {
-	Active      ActiveSnapshot
+	// Active is the active or previous state; inspect the refresh error.
+	Active ActiveSnapshot
+	// Disposition classifies processing of this hint or refresh.
 	Disposition RefreshDisposition
-	Coalesced   bool
+	// Coalesced marks a follower result; the leader is false.
+	Coalesced bool
 }
 
+// result/err are published before done closes. mu owns flight/waiter admission;
+// the leader finishes work outside mu so follower cancellation can detach.
 type refreshFlight struct {
 	done   chan struct{}
 	result RefreshResult
 	err    error
 }
 
-// Fleet owns one tenant's atomic active snapshot and refresh lifecycle.
+// Fleet owns one tenant's synchronized active snapshot and refresh lifecycle.
+// Use NewFleet; zero/nil Fleet is unusable. Trusted callbacks run synchronously
+// without panic recovery and must cooperate with cancellation. Config resources
+// remain caller-owned. Shutdown bounds waiting, not forced callback completion;
+// evaluation remains available after stop subject to age/per-flag policy.
 type Fleet struct {
 	config FleetConfig
 
@@ -424,7 +570,10 @@ type Fleet struct {
 	shutdownDone        chan struct{}
 }
 
-// NewFleet validates all bounds and copies per-flag policy state.
+// NewFleet validates finite configuration bounds and policy modes, copies the
+// policy map and starts no goroutines. Dependencies are retained; use non-nil,
+// cooperative implementations. Default Value/type validity is checked during
+// degraded evaluation rather than construction.
 func NewFleet(config FleetConfig) (*Fleet, error) {
 	if config.Tenant == "" || cmp.Compare(len(config.Tenant), maxFleetIdentityLength) == 1 {
 		return nil, fmt.Errorf("fleet tenant must be non-empty and at most %d bytes", maxFleetIdentityLength)
@@ -882,6 +1031,9 @@ func (fleet *Fleet) activate(candidate SnapshotCandidate, allowStale bool) (Acti
 
 // Refresh coalesces concurrent callers, bounds waiters and provider attempts,
 // and retains the current snapshot until a complete replacement validates.
+// The leader context controls shared work; followers cancel only their waits.
+// Cache Store errors do not undo activation. Same revision still refreshes age.
+// Bootstrap calls are separately admitted, not coalesced with this flight.
 func (fleet *Fleet) Refresh(ctx context.Context) (RefreshResult, error) {
 	if ctx == nil {
 		return RefreshResult{}, fmt.Errorf("refresh context is required")

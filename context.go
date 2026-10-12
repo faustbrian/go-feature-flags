@@ -6,14 +6,21 @@ import (
 )
 
 // Context contains only caller-supplied evaluation data. The engine never
-// scrapes process, request, or global state.
+// scrapes process, request, or global state. Its maps are borrowed during
+// evaluation; callers and custom strategies must not mutate them concurrently.
 type Context struct {
-	Subject     string
-	Tenant      string
+	// Subject is the explicit bucketing/targeting identity; empty is allowed.
+	Subject string
+	// Tenant is the required match for provider-bound snapshots, not authentication.
+	Tenant string
+	// Environment is an explicit exact-target label; no ambient environment is read.
 	Environment string
-	Attributes  map[string]string
-	Facts       map[string]Value
-	Time        time.Time
+	// Attributes is borrowed string targeting data; do not mutate during evaluation.
+	Attributes map[string]string
+	// Facts is borrowed typed targeting data; custom strategies must not mutate it.
+	Facts map[string]Value
+	// Time is the explicit evaluation instant; zero makes time strategies not match.
+	Time time.Time
 }
 
 func (c Context) validate(limits Limits) error {

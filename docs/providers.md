@@ -8,9 +8,14 @@ cleanup, health, and shutdown. `Capabilities` lets adapters advertise these
 semantics. Tenant is required on every operation.
 
 `MemoryProvider` is process-local. `postgres.New` stores one versioned tenant
-document per row and uses compare-and-swap updates. `valkey.New` stores the same
-document behind a namespaced, SHA-256 tenant key and executes compare-and-swap
-in Lua. Both durable providers retry bounded storage conflicts.
+document per row and uses compare-and-swap updates. `valkey.New` stores the
+same document behind a namespaced, SHA-256 tenant key and executes compare-
+and-swap in Lua. Both durable providers retry bounded storage conflicts by
+reloading the entire tenant document. Constructors retain explicit limits
+without normalizing them. Use DefaultLimits; memory limits do not bound tenant
+count or audit Actor bytes. Memory Close is a context-only no-op; durable
+Close delegates and bundled backends do not close application-owned DB/Valkey
+clients.
 
 ## Schema and migration
 
@@ -26,9 +31,13 @@ environment. The package does not perform key discovery or `KEYS` scans.
 `CachedProvider` has no goroutine. A caller owns refresh scheduling and calls
 `Refresh`. Fresh entries may be returned for `MaxStaleness`. During provider
 failure, `FailOpen` may return a previous snapshot only until
-`MaxOutageStaleness`; `FailClosed` returns the provider error. Tenant count and
-features per tenant are bounded, and deterministic oldest-entry eviction is
-used. Successful mutations invalidate the affected tenant.
+`MaxOutageStaleness`; `FailClosed` returns the provider error. Tenant count
+and features per tenant are bounded, and deterministic oldest-entry eviction
+is used. Successful mutations invalidate the affected local tenant entry; no
+revision fence/coalescing orders overlapping Refresh calls and mutation
+invalidation. An earlier read can be installed later. Close clears entries
+then delegates, but does not reject subsequent cache access or prevent
+repopulation.
 
 Tenant keys are bounded in bytes before cache lookup or provider delegation.
 Set `CacheConfig.MaxTenantBytes` explicitly for custom providers, or expose a
@@ -40,9 +49,11 @@ Do not use fail-open for a flag whose stale enabled state would be unsafe.
 Feature flags remain unsuitable for authorization regardless of cache policy.
 
 `ProviderSnapshotLoader` derives revisions through the portable export codec.
-Providers that retain custom strategies or authoritative commit timestamps
-should implement `SnapshotLoader` directly so revision, provenance, and source
-age remain provider-owned.
+The adapter stamps successful fetch time, not authoritative commit time, and
+its canonical export digest does not distinguish group attachment order.
+Providers that need native order-sensitive revisions, custom strategies or
+commit timestamps should implement `SnapshotLoader` directly so revision,
+provenance, and source age remain provider-owned.
 
 ## Staging, audit, and cleanup
 
@@ -51,17 +62,23 @@ time. `ApplyStage` or `ApplyScheduled` applies it atomically; a conflicting
 intervening update prevents stale application. Scheduling is explicit: the
 application owns its ticker, cancellation, and shutdown join.
 
-Audit entries record only key, action, actor, and version. They deliberately do
-not retain context or feature values. The audit bound evicts oldest entries.
+Audit entries record only key, action, actor, and version. They deliberately
+do not retain context or feature values. The audit count bound evicts oldest
+entries; Actor bytes are caller-bounded and not automatically redacted.
 `Cleanup` only performs operations selected by the caller: purging deleted
 features, discarding expired stages, or retaining a bounded number of audits.
 
 ## Import and export
 
 Documents use deterministic versioned JSON. Features and groups are sorted;
-strategy order is preserved because it controls precedence. Import supports
-dry-run and explicit fail, skip, or replace conflict behavior. Input and stored
-state bytes are bounded, unknown fields fail, and trailing JSON is rejected.
+strategy order is preserved because it controls precedence. Group attachments
+are sorted too, despite native attachment order affecting precedence; portable
+round-trips may therefore change which group matches first. Import supports
+dry-run and explicit fail, skip, or replace conflict behavior. Import/stored-
+state decoding checks byte lengths first, but backend replies and encoding
+allocate before durable size validation. Unknown struct fields and trailing
+JSON fail; duplicate keys retain encoding/json semantics. Export itself has no
+output cap. These are wire/count bounds, not total heap/CPU limits.
 
 Back up durable state before a format migration. Readers reject unknown format
 versions instead of guessing.

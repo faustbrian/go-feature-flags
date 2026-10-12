@@ -28,12 +28,14 @@ The `Start` context owns the refresher lifetime; canceling it stops the fleet.
 `SnapshotCandidate` carries opaque revision, bounded provenance, source time,
 and the immutable snapshot. `ProviderSnapshotLoader` derives a stable SHA-256
 content revision from a native provider snapshot without performing a second
-provider read. It uses the adapter clock as source time and the portable export
-codec for revision material. Providers with a durable commit timestamp or a
-custom, non-exportable strategy must implement `SnapshotLoader` and supply
-their provider-owned revision and source time instead. Durable and distributed
-cache adapters implement `SnapshotCache`; the fleet never guesses whether
-stale or malformed bytes are safe.
+provider read. It uses the adapter clock as source time and the portable
+export codec for revision material. That codec sorts group attachments, so the
+digest does not distinguish every native group precedence change. Providers
+requiring order-sensitive revisions, a durable commit timestamp or a custom,
+non-exportable strategy must implement `SnapshotLoader` and supply their
+provider-owned revision and source time instead. Durable and distributed cache
+adapters implement `SnapshotCache`; the fleet never guesses whether stale or
+malformed bytes are safe.
 
 A loader revision MUST identify the complete snapshot graph and MUST NOT be
 reused for different flag or group state. `SourceTime` MUST be the time that
@@ -48,15 +50,18 @@ invalid graph, wrong tenant, reordered source time, or excessive age leaves the
 last-known-good snapshot untouched.
 
 `RefreshInterval`, deterministic replica-specific `MaxRefreshJitter`,
-`MinRefreshInterval`, `LoadTimeout`, `MaxConcurrentProviderLoads`, `MaxWaiters`, and
-`MaxProviderLoads` bound periodic and invalidation-triggered work. Concurrent
-callers share one refresh flight. `DeterministicFleetJitter` hashes replica ID
-and refresh sequence, so identically configured pods do not synchronize their
-provider reads. `MaxFutureSkew` explicitly bounds accepted provider clock skew;
-future source time cannot silently extend freshness beyond that allowance.
-`Clock` implementations MUST be safe for concurrent use. Fleet retains the
-greatest locally observed time so a wall-clock rollback cannot revive freshness
-or extend a degraded last-known-good policy.
+`MinRefreshInterval`, `LoadTimeout`, `MaxConcurrentProviderLoads`,
+`MaxWaiters`, and `MaxProviderLoads` bound periodic and invalidation-triggered
+work. Concurrent callers share one refresh flight controlled by the leader
+context; followers can cancel their own waits. Bootstrap is separately
+admitted. `DeterministicFleetJitter` hashes replica ID and refresh sequence,
+so distinct replica IDs receive stable jitter assignments; collisions are
+possible and this does not guarantee nonsynchronized provider reads.
+`MaxFutureSkew` explicitly bounds accepted provider clock skew; future source
+time cannot silently extend freshness beyond that allowance. `Clock`
+implementations MUST be safe for concurrent use. Fleet retains the greatest
+locally observed time so a wall-clock rollback cannot revive freshness or
+extend a degraded last-known-good policy.
 
 Configuration rejects more than 65,536 refresh waiters, 1,024 provider
 attempts per executor call, 1,024 concurrent physical provider loads, 10,000
@@ -106,14 +111,15 @@ stream.
 
 Invalidation is a hint, not state. Lost Valkey publications are repaired by
 the periodic refresh. `ConvergenceWindow` must cover the configured refresh,
-jitter, and load timeout bound. `Status` exposes revision, provenance, age,
-provider-load count, invalidation gaps, refresh waiters, watcher-running state,
-and convergence state without retaining tenant values, raw provider errors, or
-evaluation context.
-`LastRefreshFailure`, `LastCacheFailure`, and `LastWatcherFailure` use bounded
-failure codes. A cache store failure never rolls back a fully validated
-activation; it is reported independently and a later successful store clears
-it.
+jitter, and load timeout bound; it reports a desired revision, not guaranteed
+remote convergence. Uncooperative callbacks can exceed their context
+deadlines. `Status` exposes revision, provenance, age, provider-load count,
+invalidation gaps, refresh waiters, watcher-running state, and convergence
+state without retaining tenant values, raw provider errors, or evaluation
+context. `LastRefreshFailure`, `LastCacheFailure`, and `LastWatcherFailure`
+use bounded failure codes. A cache store failure never rolls back a fully
+validated activation; it is reported independently and a later successful
+store clears it.
 
 An optional `InvalidationWatcher` lets `Start` own exactly one cooperative
 delivery loop. `Next` receives the fleet tenant and lifecycle context and MUST
@@ -138,9 +144,10 @@ boolean `true`; it is invalid for non-boolean evaluation. Explicit default
 returns the configured typed value, and last-known-good evaluates the retained
 snapshot only through its per-flag staleness limit.
 
-Applications MUST mark every security-sensitive flag with
-`SecuritySensitive`. Fleet copies and validates the policy map at construction;
-an outage does not rewrite the selected mode or its staleness bound.
+Applications MUST mark every security-sensitive flag with `SecuritySensitive`.
+Fleet copies policy map entries at construction. Default value/type validity
+is checked on degraded evaluation, not construction; an outage does not
+rewrite the selected mode or its staleness bound.
 
 Flags remain product rollout inputs. Authentication and authorization must be
 enforced independently before and after evaluation. Applications MUST NOT use
