@@ -16,7 +16,11 @@ The v2 source requires Go 1.27.0 or later. Production code stays at the
 repository root on main; the `/v2` suffix is Go's major-version module identity,
 not a version-specific source directory or branch. The legacy v1.0.0 release
 supports Go 1.26.6. The public v2.0.0 release is available at the major-version
-module path shown below.
+module path shown below. The prepared v2.0.1 patch is not published by this
+metadata change. Once its public tag and module artifacts are available, select
+`github.com/faustbrian/go-feature-flags/v2@v2.0.1` for the targeting and cache
+publication repairs. See [patch adoption](docs/migration.md#v201-patch-adoption)
+for the required handling of previously sorted group attachments.
 
 ## Installation
 

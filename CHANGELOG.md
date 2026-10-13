@@ -5,6 +5,13 @@ Versioning.
 
 ## Unreleased
 
+## 2.0.1 - 2026-10-13
+
+Prepared patch candidate; this entry does not claim tag or module publication.
+The frozen source range is public v2.0.0 (`5a1a5e27e11c1dcd449ca86119ef6fc4345e131d`)
+through `4e64e8fbc9e2ab317148168601c51a0095b08a41`. Release metadata preparation
+is outside that source range.
+
 ### Fixed
 
 - Require exact-target attribute keys to be present, distinguishing missing
@@ -33,6 +40,31 @@ Versioning.
   connection-string parsing and HOME-based Unix defaults. URI `+` values are
   now literal, repeated parameters use the last value, mixed host/port lists
   are positionally aligned, and keyword values must escape backslashes.
+
+### Source accountability
+
+Each non-merge commit in the frozen range is accounted for exactly once:
+
+- Targeting, attachment precedence and cache publication repair:
+  [4e64e8fbc9](https://github.com/faustbrian/go-feature-flags/commit/4e64e8fbc9e2ab317148168601c51a0095b08a41).
+- OpenFeature SDK v1.18.0 adoption and real-SDK client/hook lifecycle coverage:
+  [9c15bc32be](https://github.com/faustbrian/go-feature-flags/commit/9c15bc32be7f477b652303e46406ef94e6bb73d1).
+- PGX v5.11.0 adoption and application-owned connection configuration guidance:
+  [b0f89ba46d](https://github.com/faustbrian/go-feature-flags/commit/b0f89ba46de56c9d0ea7d6fe741933ebed275541).
+- Snapshot, provider and fleet contract documentation:
+  [c42ef0a593](https://github.com/faustbrian/go-feature-flags/commit/c42ef0a5939c769c4e3df40ec94952cbc9dba2a3).
+- Adoption and documentation navigation:
+  [4d9632c279](https://github.com/faustbrian/go-feature-flags/commit/4d9632c2791b2ffdb8583ff4921478b01e2d573a).
+- Scanner conversion and checksum-purpose comments, without runtime changes:
+  [3da86f9463](https://github.com/faustbrian/go-feature-flags/commit/3da86f9463c0fb4e7aec44ed46969e725304aeee).
+- Shared workflow update, patched documentation tooling, bounded verification,
+  development policy, supply-chain tooling and source-documentation enforcement:
+  [45d06306e9](https://github.com/faustbrian/go-feature-flags/commit/45d06306e92b57603474c9621a8554bccf619ecc),
+  [5329d7530e](https://github.com/faustbrian/go-feature-flags/commit/5329d7530e509d30f62789e1e6d19250f2495156),
+  [06b2730808](https://github.com/faustbrian/go-feature-flags/commit/06b27308086c76f9f9e679a144fe990062df0bb3),
+  [4fb344e9cb](https://github.com/faustbrian/go-feature-flags/commit/4fb344e9cb6333c6e70d46fe3432771ae6a20b05),
+  [e7af09251f](https://github.com/faustbrian/go-feature-flags/commit/e7af09251f02b9c9a99bd4fb5d1447d0a7d50950),
+  [fbed7204b0](https://github.com/faustbrian/go-feature-flags/commit/fbed7204b0e85c9fd29f7dd59872bf885368574d).
 
 ## 2.0.0 - 2026-09-27
 

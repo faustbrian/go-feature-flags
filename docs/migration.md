@@ -23,6 +23,28 @@ Tenant document formats, PostgreSQL schema, Valkey key namespaces, and
 deterministic bucketing are unchanged; the major version is an API and input
 acceptance boundary, not a storage migration.
 
+## v2.0.1 patch adoption
+
+The prepared v2.0.1 patch keeps the `/v2` imports, Go 1.27 language floor,
+tenant document versions, PostgreSQL schema and Valkey namespaces. Select it
+explicitly after its public tag and module artifacts are available; metadata
+preparation alone does not publish the module.
+
+Missing exact-target attributes no longer match an explicitly empty target.
+Review callers that previously relied on absent attributes being treated as empty.
+Native group attachment order now survives export, durable storage and loader
+revision identity. If older sorting changed intended targeting precedence,
+recover that order from its authoritative source and republish the affected
+artifacts. Upgrading cannot reconstruct an order already lost by sorting;
+verify the resulting decisions before rollout.
+
+Earlier cache reads cannot republish after successful local mutation invalidation
+or overwrite a later successful refresh. This is local publication ownership,
+not fleet-wide convergence or refresh coalescing. Applications retain callback,
+provider, OpenFeature SDK registration and durable backend lifecycle ownership.
+The patch also adopts the SDK and PGX versions described in the
+[changelog](../CHANGELOG.md#201---2026-10-13); review PGX pool configuration there.
+
 ## From Cline Toggl
 
 Inventory each Toggl feature, its type, variants, activation state, strategies,
