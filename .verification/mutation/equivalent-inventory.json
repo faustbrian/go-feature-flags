@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "packages": [
+    {
+      "module_directory": ".",
+      "package_directory": ".",
+      "source_digest": "13aacc88ddac86973af0f92123b2027d7864e653b93c5bc51a6b855150ed8a03",
+      "gremlins_version": "v0.6.0",
+      "gremlins_verifier_sha256": "390cf4085a0063fe5dcaa29ce942ea4cb8c7876347da90376b65dc8c5c811104",
+      "mutations": [
+        {
+          "file_name": "cache.go",
+          "type": "CONDITIONALS_BOUNDARY",
+          "line": 198,
+          "column": 53,
+          "contract_domain": "Constructor-created or legally lazily initialized CachedProvider refresh ownership, on all supported architectures, with one publication attempt per admitted Refresh",
+          "reason": "Independently reviewed by /root/filesystem_repair on 2026-10-13; expires 2026-11-13 or any bound production source/verifier or material admission, generation rotation, publication-once, invalidation, counter uniqueness or caller contract change. Each admitted call obtains a unique uint64 sequence within its pointer generation; the generation rotates before overflow. Published starts at zero or is a different call\u2019s sequence. This call reaches the guarded publication once, so its sequence cannot equal state.published when pointer ownership still matches. Close and successful mutations detach that pointer, preventing old-generation publication. Thus changing strict greater-than to greater-than-or-equal cannot affect any accepted outcome. Fabricated private counter states are not a public or legally initialized owner state. The three separate running-counter and endRefresh pointer-comparison mutants remain viable and are not exempted."
+        }
+      ]
+    }
+  ]
+}
