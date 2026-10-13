@@ -1,5 +1,7 @@
 # Providers, caching, and operations
 
+[Documentation index](README.md)
+
 ## Shared contract
 
 `Provider` supplies atomic CRUD, optimistic concurrency, snapshots, groups,

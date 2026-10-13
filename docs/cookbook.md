@@ -1,5 +1,7 @@
 # Cookbook
 
+[Documentation index](README.md)
+
 ## Stable progressive rollout
 
 Create one `PercentageStrategy` with a permanent seed and raise only its

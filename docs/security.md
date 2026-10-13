@@ -1,5 +1,7 @@
 # Security model
 
+[Documentation index](README.md)
+
 Version: 2.0 (2026-09-27). Owner: go-feature-flags maintainers.
 
 Feature definitions, imported tenant documents, evaluation contexts, and

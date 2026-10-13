@@ -1,5 +1,7 @@
 # Source documentation audit
 
+[Documentation index](README.md)
+
 ## Acceptance and owned boundary
 
 This Tier A pass owns truthful comments and directly contradicted maintained

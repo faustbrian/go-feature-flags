@@ -1,5 +1,7 @@
 # Verification
 
+[Documentation index](README.md)
+
 This matrix ties the release-blocking feature-flag risks to executable evidence.
 All commands run against the current source; the shared `golib` workflow
 provisions the declared PostgreSQL and Valkey fixtures for integration and

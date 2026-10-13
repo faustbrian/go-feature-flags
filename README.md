@@ -2,9 +2,7 @@
 
 [![CI](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/badge/CodeQL-required-blue)](https://github.com/faustbrian/go-feature-flags/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-100%25_required-blue)](CONTRIBUTING.md#verification)
-[![Mutation](https://img.shields.io/badge/mutation-full%2Frelease-blue)](CONTRIBUTING.md#verification)
-[![Documentation](https://img.shields.io/badge/docs-checked_in_CI-blue)](docs/)
+[![Documentation](https://img.shields.io/badge/docs-structural_checks_in_CI-blue)](docs/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/faustbrian/go-feature-flags/v2.svg)](https://pkg.go.dev/github.com/faustbrian/go-feature-flags/v2)
 [![Release](https://img.shields.io/github/v/release/faustbrian/go-feature-flags?sort=semver)](https://github.com/faustbrian/go-feature-flags/releases)
 [![Go](https://img.shields.io/badge/go-1.27.0-00ADD8?logo=go)](https://go.dev/)
@@ -17,13 +15,12 @@ provider is an optional interoperability adapter.
 The v2 source requires Go 1.27.0 or later. Production code stays at the
 repository root on main; the `/v2` suffix is Go's major-version module identity,
 not a version-specific source directory or branch. The legacy v1.0.0 release
-supports Go 1.26.6. The installation command below requires published v2
-artifacts; preparing the source does not itself publish a release.
+supports Go 1.26.6. The public v2.0.0 release is available at the major-version
+module path shown below.
 
 ## Installation
 
 ```sh
-# After v2.0.0 is published:
 go get github.com/faustbrian/go-feature-flags/v2@v2.0.0
 ```
 
@@ -65,8 +62,8 @@ See [the native reference](docs/native-api.md),
 [support](SUPPORT.md), [security policy](SECURITY.md), [license](LICENSE), and
 [release history](CHANGELOG.md).
 
-See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/README.md)
-and its [Persistence and durability family](https://github.com/faustbrian/go-library-tools/blob/v1.4.0/docs/ecosystem/design-language.md#package-families-and-selection)
+See the versioned [Golib ecosystem index](https://github.com/faustbrian/go-library-tools/blob/v1.8.4/docs/ecosystem/README.md)
+and its [Persistence and durability family](https://github.com/faustbrian/go-library-tools/blob/v1.8.4/docs/ecosystem/design-language.md#package-families-and-selection)
 for the shared design language this module follows.
 
 ## Development
@@ -88,3 +85,5 @@ The minimum source toolchain is Go 1.27.0.
 ## License
 
 MIT.
+
+Continue with the [documentation index](docs/README.md).

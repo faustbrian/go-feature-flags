@@ -1,5 +1,7 @@
 # FAQ
 
+[Documentation index](README.md)
+
 ## Can a flag authorize an operation?
 
 No. Flags control product rollout. Use an authorization system for access

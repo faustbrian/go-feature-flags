@@ -1,5 +1,7 @@
 # Native API reference
 
+[Documentation index](README.md)
+
 ## Definitions and values
 
 `Definition` owns a stable key, declared type, default value, named variants,

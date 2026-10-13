@@ -1,5 +1,7 @@
 # Migration
 
+[Documentation index](README.md)
+
 ## From v1 to v2
 
 Use Go 1.27 or newer and change native, OpenFeature, PostgreSQL, Valkey, and

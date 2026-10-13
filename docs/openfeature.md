@@ -1,5 +1,7 @@
 # OpenFeature adapter
 
+[Documentation index](README.md)
+
 The `openfeature` package adapts one native provider and one fixed tenant to the
 OpenFeature Go SDK. Fixing the tenant at construction prevents evaluation
 context from switching storage partitions.
