@@ -91,8 +91,8 @@ type weeklyWire struct {
 }
 
 // Export encodes definitions and groups in a versioned deterministic JSON
-// format. Strategy order is preserved, but feature group attachments are sorted
-// and can change native precedence on round-trip. Only built-in value strategy
+// format. Strategy and feature group attachment order are preserved because
+// they control native precedence. Only built-in value strategy
 // types serialize; custom strategies return ErrUnsupportedStrategy. JSON encoding
 // allocates before any durable MaxStateBytes check; Export has no output cap.
 func Export(definitions []Definition, groups []GroupDefinition, limits Limits) ([]byte, error) {
@@ -174,7 +174,7 @@ func encodeDefinition(definition Definition) (definitionWire, error) {
 		Metadata:  cloneStringMap(definition.Metadata),
 		Owner:     definition.Owner,
 		Lifecycle: definition.Lifecycle,
-		Groups:    sortedStrings(definition.Groups),
+		Groups:    append([]string(nil), definition.Groups...),
 		Tags:      sortedStrings(definition.Tags),
 		Version:   definition.Version,
 	}

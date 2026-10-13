@@ -51,17 +51,26 @@ type cachedSnapshot struct {
 	fetched  time.Time
 }
 
+// Publication ordering exists only while a tenant has outstanding refreshes.
+// Failed fetches do not fence successful earlier fetches. Mutation invalidation
+// removes this state so pre-mutation reads cannot repopulate the cache.
+type cacheRefreshState struct {
+	running   uint64
+	next      uint64
+	published uint64
+}
+
 // CachedProvider adds explicit bounded-stale snapshots without a hidden
-// refresher. Refresh ownership remains with the caller. Entries synchronize
-// memory access, not remote consistency: concurrent refreshes are not coalesced
-// or revision-fenced against each other/mutation invalidation. An earlier
-// provider read may be installed after a later successful mutation. Close
-// clears entries and delegates, but creates no closed admission state.
+// refresher. Refresh ownership remains with the caller. Concurrent refreshes
+// are not coalesced; older admitted reads cannot publish after a newer successful
+// refresh or local mutation invalidation. This orders local publication, not
+// remote commits. Close clears entries and delegates without closing admission.
 type CachedProvider struct {
-	provider Provider
-	config   CacheConfig
-	mu       sync.RWMutex
-	entries  map[string]cachedSnapshot
+	provider  Provider
+	config    CacheConfig
+	mu        sync.RWMutex
+	entries   map[string]cachedSnapshot
+	refreshes map[string]*cacheRefreshState
 }
 
 // NewCachedProvider validates cache bounds and retains provider/clock; no refresher is
@@ -99,9 +108,10 @@ func NewCachedProvider(provider Provider, config CacheConfig) (*CachedProvider, 
 	}
 
 	return &CachedProvider{
-		provider: provider,
-		config:   config,
-		entries:  make(map[string]cachedSnapshot),
+		provider:  provider,
+		config:    config,
+		entries:   make(map[string]cachedSnapshot),
+		refreshes: make(map[string]*cacheRefreshState),
 	}, nil
 }
 
@@ -136,6 +146,7 @@ func (provider *CachedProvider) Health(ctx context.Context) ProviderHealth {
 func (provider *CachedProvider) Close(ctx context.Context) error {
 	provider.mu.Lock()
 	provider.entries = make(map[string]cachedSnapshot)
+	provider.refreshes = make(map[string]*cacheRefreshState)
 	provider.mu.Unlock()
 
 	return provider.provider.Close(ctx)
@@ -166,12 +177,15 @@ func (provider *CachedProvider) Snapshot(ctx context.Context, tenant string) (Sn
 	return Snapshot{}, err
 }
 
-// Refresh synchronously replaces one cached tenant snapshot. Concurrent calls
-// can install out of order; successful fetch time, not commit time, starts age.
+// Refresh synchronously fetches one tenant snapshot. An older admitted call may
+// return its snapshot but cannot overwrite newer successful publication or
+// mutation invalidation. Successful fetch time, not commit time, starts age.
 func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Snapshot, error) {
 	if err := providerInput(ctx, tenant, provider.config.MaxTenantBytes); err != nil {
 		return Snapshot{}, err
 	}
+	state, sequence := provider.beginRefresh(tenant)
+	defer provider.endRefresh(tenant, state)
 	snapshot, err := provider.provider.Snapshot(ctx, tenant)
 	if err != nil {
 		return Snapshot{}, err
@@ -181,13 +195,43 @@ func (provider *CachedProvider) Refresh(ctx context.Context, tenant string) (Sna
 	}
 	entry := cachedSnapshot{snapshot: snapshot, fetched: provider.config.Clock.Now()}
 	provider.mu.Lock()
-	if _, exists := provider.entries[tenant]; !exists && len(provider.entries) >= provider.config.MaxTenants {
-		provider.evictOldestLocked()
+	if provider.refreshes[tenant] == state && sequence > state.published {
+		if _, exists := provider.entries[tenant]; !exists && len(provider.entries) >= provider.config.MaxTenants {
+			provider.evictOldestLocked()
+		}
+		provider.entries[tenant] = entry
+		state.published = sequence
 	}
-	provider.entries[tenant] = entry
 	provider.mu.Unlock()
 
 	return snapshot, nil
+}
+
+func (provider *CachedProvider) beginRefresh(tenant string) (*cacheRefreshState, uint64) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.refreshes == nil {
+		provider.refreshes = make(map[string]*cacheRefreshState)
+	}
+	state := provider.refreshes[tenant]
+	// Rotate before counter overflow; old outstanding readers retain a distinct
+	// state and cannot publish into the replacement generation.
+	if state == nil || state.next == ^uint64(0) {
+		state = &cacheRefreshState{}
+		provider.refreshes[tenant] = state
+	}
+	state.next++
+	state.running++
+	return state, state.next
+}
+
+func (provider *CachedProvider) endRefresh(tenant string, state *cacheRefreshState) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	state.running--
+	if state.running == 0 && provider.refreshes[tenant] == state {
+		delete(provider.refreshes, tenant)
+	}
 }
 
 // Create creates a copied definition at version 1; existing tombstones also conflict.
@@ -425,6 +469,7 @@ func (provider *CachedProvider) invalidateOnSuccess(tenant string, err error) {
 	}
 	provider.mu.Lock()
 	delete(provider.entries, tenant)
+	delete(provider.refreshes, tenant)
 	provider.mu.Unlock()
 }
 

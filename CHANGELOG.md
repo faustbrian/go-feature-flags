@@ -5,6 +5,19 @@ Versioning.
 
 ## Unreleased
 
+### Fixed
+
+- Require exact-target attribute keys to be present, distinguishing missing
+  attributes from explicitly supplied empty values.
+- Preserve native group attachment precedence in portable exports, durable
+  tenant documents, and provider-loader revision identity. Previously sorted
+  artifacts cannot recover their original intended order automatically; republish
+  that order from its source when the old normalization changed targeting.
+- Prevent earlier cache reads from republishing after successful local mutation
+  invalidation or overwriting a later successful refresh. Failed or unrelated
+  work does not discard a valid publication; refreshes remain caller-owned and
+  are not coalesced.
+
 ### Changed
 
 - Clarify evaluation precedence, callback and snapshot ownership, cache/fleet

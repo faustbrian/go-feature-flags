@@ -51,7 +51,7 @@ type ExactTargetStrategy struct {
 	Subjects []string
 	// Environments restricts environments when nonempty; empty is unrestricted.
 	Environments []string
-	// Attributes requires string equality; a missing attribute reads as an empty string.
+	// Attributes requires each key to exist and its string value to match exactly.
 	Attributes map[string]string
 }
 
@@ -170,7 +170,8 @@ func (s ExactTargetStrategy) SnapshotStrategy() Strategy {
 
 func matchesAttributes(required, actual map[string]string) bool {
 	for key, value := range required {
-		if actual[key] != value {
+		actualValue, exists := actual[key]
+		if !exists || actualValue != value {
 			return false
 		}
 	}

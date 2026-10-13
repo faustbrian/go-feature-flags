@@ -31,10 +31,10 @@ The `Start` context owns the refresher lifetime; canceling it stops the fleet.
 and the immutable snapshot. `ProviderSnapshotLoader` derives a stable SHA-256
 content revision from a native provider snapshot without performing a second
 provider read. It uses the adapter clock as source time and the portable
-export codec for revision material. That codec sorts group attachments, so the
-digest does not distinguish every native group precedence change. Providers
-requiring order-sensitive revisions, a durable commit timestamp or a custom,
-non-exportable strategy must implement `SnapshotLoader` and supply their
+export codec for revision material. Ordered group attachments participate in
+the digest, so different native precedence produces different revisions.
+Providers requiring a durable commit timestamp or a custom, non-exportable
+strategy must implement `SnapshotLoader` and supply their
 provider-owned revision and source time instead. Durable and distributed cache
 adapters implement `SnapshotCache`; the fleet never guesses whether stale or
 malformed bytes are safe.
@@ -58,7 +58,7 @@ work. Concurrent callers share one refresh flight controlled by the leader
 context; followers can cancel their own waits. Bootstrap is separately
 admitted. `DeterministicFleetJitter` hashes replica ID and refresh sequence,
 so distinct replica IDs receive stable jitter assignments; collisions are
-possible and this does not guarantee nonsynchronized provider reads.
+possible and this does not guarantee separately timed provider reads.
 `MaxFutureSkew` explicitly bounds accepted provider clock skew; future source
 time cannot silently extend freshness beyond that allowance. `Clock`
 implementations MUST be safe for concurrent use. Fleet retains the greatest

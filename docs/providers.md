@@ -35,11 +35,15 @@ environment. The package does not perform key discovery or `KEYS` scans.
 failure, `FailOpen` may return a previous snapshot only until
 `MaxOutageStaleness`; `FailClosed` returns the provider error. Tenant count
 and features per tenant are bounded, and deterministic oldest-entry eviction
-is used. Successful mutations invalidate the affected local tenant entry; no
-revision fence/coalescing orders overlapping Refresh calls and mutation
-invalidation. An earlier read can be installed later. Close clears entries
-then delegates, but does not reject subsequent cache access or prevent
-repopulation.
+is used. Successful mutations invalidate the affected local tenant entry and
+fence earlier reads from republishing it. Overlapping Refresh calls are not
+coalesced, but a later successful refresh cannot be overwritten by an earlier
+admitted read. Failed refreshes and mutations do not discard another successful
+publication; unrelated tenants retain independent publication state. Ordering
+metadata exists only while tenant refreshes are active, not as retained history
+for every tenant ever seen. Provider IO and clock callbacks run outside the
+cache lock. Close clears entries and fences old reads, then delegates; it does
+not reject subsequent cache access or prevent new refreshes.
 
 Tenant keys are bounded in bytes before cache lookup or provider delegation.
 Set `CacheConfig.MaxTenantBytes` explicitly for custom providers, or expose a
@@ -52,10 +56,10 @@ Feature flags remain unsuitable for authorization regardless of cache policy.
 
 `ProviderSnapshotLoader` derives revisions through the portable export codec.
 The adapter stamps successful fetch time, not authoritative commit time, and
-its canonical export digest does not distinguish group attachment order.
-Providers that need native order-sensitive revisions, custom strategies or
-commit timestamps should implement `SnapshotLoader` directly so revision,
-provenance, and source age remain provider-owned.
+its canonical export digest includes ordered group attachments. Providers that
+need custom nonportable strategies or commit timestamps should implement
+`SnapshotLoader` directly so revision, provenance, and source age remain
+provider-owned.
 
 ## Staging, audit, and cleanup
 
@@ -73,9 +77,11 @@ features, discarding expired stages, or retaining a bounded number of audits.
 ## Import and export
 
 Documents use deterministic versioned JSON. Features and groups are sorted;
-strategy order is preserved because it controls precedence. Group attachments
-are sorted too, despite native attachment order affecting precedence; portable
-round-trips may therefore change which group matches first. Import supports
+strategy and group attachment order is preserved because it controls precedence.
+The same definition codec preserves this order in durable tenant documents.
+Documents previously exported or stored with sorted attachments cannot recover
+the original order automatically; republish the intended order from its source
+when that prior normalization changed targeting. Import supports
 dry-run and explicit fail, skip, or replace conflict behavior. Import/stored-
 state decoding checks byte lengths first, but backend replies and encoding
 allocate before durable size validation. Unknown struct fields and trailing

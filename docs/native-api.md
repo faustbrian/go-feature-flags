@@ -15,7 +15,7 @@ unknown lifecycle labels. Active definitions evaluate dependencies, feature
 groups, then their ordered strategies. The first match wins. Details include
 value, variant, reason, matched strategy, definition version, and bounded
 diagnostics from a selected strategy. Custom diagnostics are truncated, not
-sanitized, and diagnostics from nonmatching strategies are discarded.
+sanitized, and diagnostics from strategies that do not match are discarded.
 
 ## Context
 
@@ -28,8 +28,8 @@ personal data in context.
 ## Strategies
 
 - `ExactTargetStrategy` matches configured tenants, subjects, environments,
-  and string attributes. A missing attribute reads as an empty string, so an
-  empty configured target can match an absent attribute.
+  and string attributes. Required attribute keys must be present; an explicit
+  empty value matches an empty target, but an absent attribute does not.
 - `PercentageStrategy` provides stable 0.001% rollout precision. Keep its seed
   stable to preserve assignments.
 - `SetStrategy` applies deny lists before allow lists for tenants and subjects.

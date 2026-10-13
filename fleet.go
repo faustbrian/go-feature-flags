@@ -84,9 +84,9 @@ func (function SnapshotLoadFunc) Load(ctx context.Context, tenant string) (Snaps
 }
 
 // ProviderSnapshotLoader adapts the native Provider contract and derives a
-// canonical-export revision from the fully validated snapshot. Export sorts
-// group attachments, so this revision does not distinguish all native group
-// precedence changes. Custom/order-sensitive revision policy needs SnapshotLoader.
+// canonical-export revision from the fully validated snapshot, including group
+// attachment precedence. Custom nonportable strategies or authoritative commit
+// timestamps need a provider-owned SnapshotLoader.
 type ProviderSnapshotLoader struct {
 	provider   Provider
 	clock      CacheClock
