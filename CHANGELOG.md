@@ -7,10 +7,11 @@ Versioning.
 
 ## 2.0.1 - 2026-10-13
 
-Prepared patch candidate; this entry does not claim tag or module publication.
+Recorded as a prepared patch candidate on this date; public availability
+requires the v2.0.1 tag and release.
 The frozen source range is public v2.0.0 (`5a1a5e27e11c1dcd449ca86119ef6fc4345e131d`)
-through `4e64e8fbc9e2ab317148168601c51a0095b08a41`. Release metadata preparation
-is outside that source range.
+through `2757b4b96ec08572502a8702c385582701d3532f`. Final source-accountability
+alignment is outside that source range.
 
 ### Fixed
 
@@ -65,6 +66,13 @@ Each non-merge commit in the frozen range is accounted for exactly once:
   [4fb344e9cb](https://github.com/faustbrian/go-feature-flags/commit/4fb344e9cb6333c6e70d46fe3432771ae6a20b05),
   [e7af09251f](https://github.com/faustbrian/go-feature-flags/commit/e7af09251f02b9c9a99bd4fb5d1447d0a7d50950),
   [fbed7204b0](https://github.com/faustbrian/go-feature-flags/commit/fbed7204b0e85c9fd29f7dd59872bf885368574d).
+
+- Patch metadata and adoption guidance:
+  [b2380c6de8](https://github.com/faustbrian/go-feature-flags/commit/b2380c6de8c53f13e4e2372a5cb426974c96af6c).
+- Lazy refresh tracking, mutation fencing and completed-refresh lifetime
+  regression coverage, with the narrow equivalent publication comparison:
+  [460b92ec5b](https://github.com/faustbrian/go-feature-flags/commit/460b92ec5bf28edbed19b85eac28fcc878236abe),
+  [2757b4b96e](https://github.com/faustbrian/go-feature-flags/commit/2757b4b96ec08572502a8702c385582701d3532f).
 
 ## 2.0.0 - 2026-09-27
 
