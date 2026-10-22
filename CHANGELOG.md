@@ -10,6 +10,8 @@ Versioning.
 ### Changed
 
 - Publish the current source and documentation with a fresh immutable tag.
+- Build with Go 1.27.3 to address GO-2026-6809 in `crypto/x509`.
+  Consumers should use Go 1.27.3 or newer.
 
 ## 2.0.1 - 2026-10-13
 
